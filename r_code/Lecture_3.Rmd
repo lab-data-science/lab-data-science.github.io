@@ -1,0 +1,428 @@
+---
+title: "Data Modeling"
+author: "Falco"
+date: "24/10/2019"
+output:
+    pdf_document:
+     keep_tex: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'G:\\Il mio Drive\\Teaching\\Data Science Lab\\Lecture 3')
+```
+
+# Lecture 3: Data Modeling
+
+The goal of a model is to provide a simple, low-dimensional, interpretable summary of a dataset. Models are a really useful way to help you peel back layers of structure as you are exploring your dataset. Every statistical model can be "divided" in two parts:
+1. a family of models that express a prece, but generic, pattern that you want to capture (i.e., the pattern can be a straight line or a quadratic curve);
+2. a fitted model, that can be found by selecting the family of models that is the closest to your data.
+
+It is important to understand that a fitted model is just the closest model from a family of models. This implies that you have the "best" model according to some criteria and based on a set of assumptions. This does not imply that your model is a good model or that your model is "true". George Box, a famous british statistician, once said one of the most quoted statistical quotes:<em>"all models are wrong, but some are useful"</em>.
+It is worth reading the fuller context of the quote as it is quite illustrative of the philosophy behind any statistical model:
+<em> "Now it would be very remarkable if any system existing in the real world could be exactly represented by any simple model. However, cunningly chosen parsimonious models often do provide remarkably useful approximations. For example, the law PV = RT relating pressure P, volume V and temperature T of an "ideal" gas via a constant R is not exactly true for any real gas, but it frequently provides a useful approximation and furthermore its structure is informative since it springs from a physical view of the behavior of gas molecules. For such a model there is no need to ask the question "Is the model true?" If "truth" is to be the "whole truth" the answer must be "No." The only question of interest is "Is the model illuminating and use-
+ful?"</em>
+
+This does not mean that all the models are wrong and, we should just go for the least wrong model. This quote should be interpeted as a call for careful laying down the assumptions on which the quality of the model is built on. As Berkeley statisticain Mark Van Der Laan stated in a recent article "The statistical formulation and theory should define the algorithm" [source](https://magazine.amstat.org/blog/2015/02/01/statscience_feb2015/).
+
+
+In this lecture we will go see how to perform in R two types of models:
+1. linear regression models;
+2. non-linear predictive models (decision trees, random forests).
+
+As you have probably seen the former in your econometric classes, I will skip the mathematical details, and focus on the the function used to build these models and on the intepretation of their outputs.
+
+```{r}
+library(tidyverse)
+library(modelr)
+```
+
+```{r}
+library(readxl)
+data <- read_excel("G:\\Il mio Drive\\Econometrics Lab\\Data\\Compustat Data.xlsx")
+data <- data[, !names(data) %in% c("Interest Expense - Total (Financial Services)", "Net Interest Income", "Nonperforming Assets - Total")]
+data_clean <- na.omit(data)
+```
+
+```{r}
+x <- data_clean$`Assets - Total`[which(data_clean$`Assets - Total`< quantile(data_clean$`Assets - Total`, 0.95))]
+y <- data_clean$`Sales/Turnover (Net)`[which(data_clean$`Assets - Total`< quantile(data_clean$`Assets - Total`, 0.95))]
+
+reg_data <- as.data.frame(cbind(x, y))
+```
+
+```{r}
+ggplot(reg_data, aes(x, y)) +
+  geom_point()
+```
+
+You can see a quite clear pattern in the data. Let's now use a model to capture the pattern and make it more explicit.
+
+Let's first generate a set of random model an let's overlay them on the data.
+
+```{r}
+models <- tibble(
+  beta1 = runif(length(x), 0, 200),
+  beta2 = runif(length(x), -4, 4)
+)
+```
+
+```{r}
+ggplot(reg_data, aes(x, y)) +
+  geom_abline(
+    aes(intercept = beta1,
+        slope = beta2),
+    data = models, alpha = 1/15
+  ) + 
+  geom_point()
+```
+
+```{r}
+model1 <- function(beta, data){
+  beta[1] + data$x * beta[2]
+}
+```
+
+
+```{r}
+fitted.values <- model1(c(50, 1.5), reg_data)
+```
+
+```{r}
+head(fitted.values)
+```
+
+Let's now get the residuals of our model.
+
+```{r}
+measure_distance <- function(mod, data) {
+ diff <- data$y - model1(mod, data)
+ sqrt(mean(diff ^ 2))
+}
+measure_distance(c(50, 1.5), sim1)
+```
+We can use "purrr" to compute the distance for all the models defined previously. We will need a helper function because our distance expectes the model as a numeric vector of length 2.
+
+```{r}
+reg_data_dist <- function(beta1, beta2) {
+ measure_distance(c(beta1, beta2), reg_data)
+}
+models <- models %>%
+ mutate(dist = purrr::map2_dbl(beta1, beta2, reg_data_dist))
+```
+
+```{r}
+models
+```
+
+We can now overlay the best 10 models on the data.
+
+```{r}
+ggplot(reg_data, aes(x, y)) +
+ geom_point(size = 2, color = "grey30") +
+ geom_abline(
+ aes(intercept = beta1, slope = beta2, color = -dist),
+ data = filter(models, rank(dist) <= 10)
+ )
+
+```
+
+We can also think about these models as observations, and visualize
+them with a scatterplot of beta1 versus beta2, again colored by -dist. We
+can no longer directly see how the model compares to the data, but
+we can see many models at once. Again, I've highlighted the 10 best
+models, this time by drawing red circles underneath them:
+
+
+```{r}
+ggplot(models, aes(beta1, beta2)) +
+ geom_point(
+ data = filter(models, rank(dist) <= 10),
+ size = 4, color = "red"
+ ) +
+ geom_point(aes(colour = -dist))
+```
+
+Instead of trying lots of random models, we could be more systematic and generate an evenly spaced grid of points (this is called a grid search). I picked the parameters of the grid roughly by looking at where the best models were in the preceding plot:
+
+```{r}
+grid <- expand.grid(
+ beta1 = seq(0, 200, length = 50),
+ beta2 = seq(-4, 4, length = 50)
+ ) %>%
+ mutate(dist = purrr::map2_dbl(beta1, beta2, reg_data_dist))
+grid %>%
+ ggplot(aes(beta1, beta2)) +
+ geom_point(
+ data = filter(grid, rank(dist) <= 10),
+ size = 4, colour = "red"
+ ) +
+ geom_point(aes(color = -dist))
+
+```
+
+When you overlay the best 10 models back on the original data, they
+all look pretty good:
+
+```{r}
+ggplot(reg_data, aes(x, y)) +
+ geom_point(size = 2, color = "grey30") +
+ geom_abline(
+ aes(intercept = beta1, slope = beta2, color = -dist),
+ data = filter(grid, rank(dist) <= 10)
+ )
+```
+
+You could imagine iteratively making the grid finer and finer until
+you narrowed in on the best model. But there's a better way to tackle
+that problem: a numerical minimization tool called Newton-Raphson search. The intuition of Newton-Raphson is pretty simple: you
+pick a starting point and look around for the steepest slope. You
+then ski down that slope a little way, and then repeat again and
+again, until you can't go any lower. In R, we can do that with
+optim():
+
+```{r}
+best <- optim(c(0, 0), measure_distance, data = reg_data)
+best$par
+```
+
+```{r}
+ggplot(reg_data, aes(x, y)) +
+ geom_point(size = 2, color = "grey30") +
+ geom_abline(intercept = best$par[1], slope = best$par[2])
+```
+
+Don't worry too much about the details of how optim() works. It's
+the intuition that's important here. If you have a function that
+defines the distance between a model and a dataset, and an algorithm that can minimize that distance by modifying the parameters
+of the model, you can find the best model. The neat thing about this
+approach is that it will work for any family of models that you can
+write an equation for.
+There's one more approach that we can use for this model, because it
+is a special case of a broader family: linear models. A linear model
+has the general form $y = a_1 + a_2 \cdot x_1 + a_3 \cdot x_2 + ... + a_n \cdot x_{(n - 1)}$. So this simple model is equivalent to a general
+linear model where n is 2 and $x_1$ is $x$. R has a tool specifically
+designed for fitting linear models called lm(). lm() has a special way
+to specify the model family: formulas. Formulas look like $y ~ x$,
+which lm() will translate to a function like $y = a_1 + a_2 * x$. We
+can fit the model and look at the output:
+
+
+```{r}
+model_1 <- lm(y ~ x, data = reg_data)
+summary(model_1)
+```
+
+Now let's add an additional variable in the linear regression to compare the two different models.
+
+```{r}
+z <- data_clean$Employees[which(data_clean$`Assets - Total`< quantile(data_clean$`Assets - Total`, 0.95))]
+reg_data <- cbind(reg_data, z)
+```
+
+```{r}
+model_2 <- lm(y ~ x + z, data = reg_data)
+summary(model_2)
+```
+
+In R, you can either write down all the variables that you want to use as regressors in your model or you can just use $y \sim \: .$.
+
+```{r}
+model_3 <- lm(y ~ ., data = reg_data)
+summary(model_3)
+```
+
+A very easy way to compare two different linear regressions is through the likelihood ratio test. In statistics, the likelihood-ratio test assesses the goodness of fit of two competing statistical models based on the ratio of their likelihoods.
+
+```{r}
+library(lmtest)
+lrtest(model_1, model_2)
+```
+
+$p < 0.001$ indicates that the model with all predictors fits significantly better than the model with only one predictor. Another "goodness-of-fit" measure that can be used is the $R^2$:
+\begin{equation}
+R^2= 1 - \frac{ESS}{TSS}.
+\end{equation}
+
+```{r}
+summary(model_1)$r.squared
+summary(model_2)$r.squared
+```
+
+We can also get the fitted values of the model for any $x$ and $z$ by running the following chunck of code.
+
+```{r}
+coeffs = coefficients(model_2)
+assets = 159 
+employees = 2
+y <- coeffs[1] +coeffs[2]*assets +coeffs[3]*employees
+y
+```
+
+Or, equivalently:
+
+```{r}
+newdata <- data.frame(x = 159, z = 2)
+predict(model_2, newdata) 
+
+predict(model_2, newdata, interval="confidence") 
+```
+
+Once we fitted our favourite model, we can check the residuals from the model: $e_i = y_i - \hat{f}(x_i)$.
+
+```{r}
+model.res = resid(model_2)
+plot(reg_data$y, model.res, ylab="Residuals", xlab="Sales", main="Residuals v. Sales") 
+abline(0, 0)  
+```
+
+Moreover, we can standardize the residuals and plot them against normalized scores for the outcome variable. 
+
+```{r}
+model_2.stdres = rstandard(model_2)
+qqnorm(model_2.stdres ,  ylab="Standardized Residuals",  xlab="Normal Scores",  main="Standardized Residuals v. Sales") 
+qqline(model_2.stdres)
+```
+
+In R, you can introduce an interaction between the regressors by using $*$. Always remember to include also the single regressors in the formula.
+
+```{r}
+model_int<-lm(y ~ x  + z + x*z, data = reg_data)
+summary(model_int)
+```
+
+You can't directly introduce a quadratic term in the regression formula. Hence, you need to create an additional variable with the square term and then you can include it in the regression.
+
+```{r}
+x2 <- x^2
+model_squared<-lm(y ~ x  +  x2 + z, data = reg_data)
+summary(model_squared)
+```
+
+## Non-linear predictive model
+
+In some scenarios we may be interested in building a statistical model to predict a certain outcome. In this case, for instance, we may want to use different models to predict the location of a firm. The Compustat data entail US and Canadian enterprises. In the next chunks of code I will build three different models (logistic regression, CART and Random Forest) to predict the location of the firm. 
+
+Before running the analyses, I restict the set of predictors to the following variables and I create a dummy variable that assumes value 1 if the firm is located in the US and 0 if it is located in Canada.
+
+```{r}
+library(caret)
+myvariables <- c("ISO Currency Code",
+                 "Assets - Total", "Average Short-Term Borrowings",
+                 "Current Assets - Total", "Long-Term Debt Due in One Year",
+                 "Debt in Current Liabilities - Total", "Employees",
+                 "Earnings Before Interest and Taxes", "Liabilities - Total",
+                 "Net Income (Loss)", "In Process R&D Expense",
+                 "GIC Sectors", "Standard Industry Classification Code")
+data_prediction <- data_clean[myvariables]
+data_prediction$iso_code <- ifelse(data_prediction$`ISO Currency Code`=="USD", 1, 0)
+data_prediction <- data_prediction[, !names(data_prediction) %in% c("ISO Currency Code")]
+```
+
+In order to check how good are the three models, I randomly split the data into two disjoint sets: a training set that I will use to build the model and a test set that I will use to validate the quality of the model's prediction.
+
+```{r}
+set.seed(123)
+index <- sample(seq_len(nrow(data_prediction)),
+                    size = nrow(data_prediction)*0.5) 
+
+train <- data_prediction[index,]
+test <- data_prediction[-index,]
+```
+
+### Logistic Regression
+
+The first model that I run is a logistic regression with the inclusion of all the covariates.
+
+```{r}
+
+logit<-glm(iso_code ~ ., data= train, family=binomial(link='logit'))
+summary(logit)
+```
+
+To get the accuracy of the model I first get the predicted probabilities, then impute the values for the outcome variable and then check the root-mean-squared-error (RMSE), the mean-absolute error (MAE), the $R^2$ and the confusion matrix.
+
+```{r}
+#Accurancy from cv
+fitted.results.logit <- predict(logit, newdata = test, type='response')
+fitted.logit <- ifelse(fitted.results.logit >= 0.5, 1, 0)
+
+# RMSE
+caret::postResample(fitted.logit, test$iso_code)
+
+#For good predictive model the chi and RMSE values should be low 
+confusionMatrix(data = as.factor(fitted.logit),
+                reference = as.factor(test$iso_code))
+```
+
+### Classification and Regression Tree
+
+The second model that I run is a classification and regression tree from the "rpart" package in R.
+
+```{r}
+library(rpart)
+rpart <- rpart(iso_code ~ ., data=train, method="class") 
+
+printcp(rpart) # display the results 
+plotcp(rpart) # visualize cross-validation results 
+summary(rpart) # detailed summary of splits
+```
+
+You can depict the classification tree by using the "plot()" function.
+
+```{r}
+#Plot tree 
+rpart.plot::rpart.plot(rpart)
+```
+
+```{r}
+#Accurancy from cv
+fitted.results.rpart <- predict(rpart, newdata=test,type='prob')
+fitted.rpart <- ifelse(fitted.results.rpart[,2] >= 0.5, 1, 0)
+
+# RMSE
+caret::postResample(fitted.rpart, test$iso_code)
+
+#For good predictive model the chi and RMSE values should be low 
+confusionMatrix(data = as.factor(fitted.rpart),
+                reference = as.factor(test$iso_code))
+```
+
+### Random Forest
+
+The last model that I build is a random forest from the "randomForest" package.
+
+```{r}
+library(randomForest)
+colnames(train) <- c("assets", "short_term_borrow",
+                     "current_assets", "debt",
+                     "debt_liabilities", "employees", 
+                     "EBIT", "liabilities",
+                     "net_income", "r_d",
+                     "gic", "SICC", "iso_code")
+colnames(test) <- c("assets", "short_term_borrow",
+                     "current_assets", "debt",
+                     "debt_liabilities", "employees", 
+                     "EBIT", "liabilities",
+                     "net_income", "r_d",
+                     "gic", "SICC", "iso_code")
+set.seed(133234)
+rf <- randomForest(iso_code ~ ., data=train, importance=TRUE, ntree=200)
+  
+predict.rf <- predict(rf, test)
+fitted.rf <- as.numeric(predict.rf > 0.5)
+print(rf)
+plot(rf)
+varImpPlot(rf)
+
+#Fitted results Random Forest
+caret::postResample(fitted.rf, test$iso_code)
+
+#For good predictive model the chi and RMSE values should be low 
+confusionMatrix(data = as.factor(fitted.rf),
+                reference = as.factor(test$iso_code))
+```
+
+
+
+

@@ -1,0 +1,500 @@
+---
+title: "Exploratory Data Analysis"
+author: "Falco"
+date: "21/10/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'G:\\Il mio Drive\\Teaching\\Data Science Lab\\Lecture 2')
+```
+
+# Lecture 2: Exploratory Data Analysis
+
+In this lecture we will see how to use vizualization, transformation and modeling to explore your data in a systematic way. This task is usually referred by statisticians as exploratory data analysis, or EDA for short. EDA is an iterative cycle in which you:
+1. generate questions about your data; 
+2. search for answers by vizualizing, transforming and modeling your data; 
+3. use what you learn to refine your question and/or generate new questions.
+
+During the initial phases of the EDA you should feel totally free to explore and investigate any idea that occurs to you. EDA is a creative process, and the key is to ask a large quantity of questions to your data. Indeed, the ultimate goal of EDA is to develop an understanding of your data and the best way to do it is by using questions as tools to guide you through the investigation.
+
+There is no general rule about which questions you should ask to guide you through the research. However, two types of questions will always be useful for making discoveries within your data:
+1. what type of variation occurs within my variables? 
+2. what type of covariation occurs between my variables?
+
+Before going through the exploratory analysis of your data you need to upload your data in the R environment. You can consider this step as a "pre-processing" phase of the analysis.
+In the last lecture we saw the main vectors in R (atomic vectors and lists). Here, we will see how to upload and handle matrices of data. The most widely used data matrices in R are data frames and tibbles. A data frame is simply a matrix where each column can be of a different type (i.e., numeric, character, logical). In a data frame}rows correspond to observations while columns correspond to variables.
+
+## R datasets
+
+R comes with several built-in datasets, including the famous "iris data" collected by Anderson and analyzed by Fisher in the 1930s. Another widely used dataset for introduction to data anlysis in R is the "cars dataset". You can type "iris" or "cars" to see the dataset.
+
+```{r cars}
+# Upload the "iris" dataset and "assign" it to a dataframe
+data <- iris
+```
+
+The first thing you can do is to check the dimensions of the dataset and the names of the columns.
+
+```{r}
+# Check out the dimension of the data
+dim(data)
+
+# Check out the names of the columns
+ls(data) # alphabetic order
+colnames(data) #dataset order
+```
+
+A very useful command is the "summary()" function. "summary()" depicts a series of descriptive statistics for each numeric column (i.e., minimum, maximum, median, mean, 1st and 3rd decile). 
+
+```{r}
+summary(data)
+```
+
+"iris" and "cars" data are used for 101 R programming classes. However, these dataset just contain numeric variables and are really well-behaved data very different from "real world data".
+
+![](files/real_data.jpeg)
+
+# Uploading Data
+
+Before uploading your data, make sure that you set the working directory in the same folder of your data.
+
+```{r, eval=FALSE}
+setwd('...')
+```
+
+
+## Uploading Data from Text
+
+
+R has build-in functions to upload text data, the "read.table()" and "read.csv()" functions. You may want to use the "header = TRUE" (this function tells R that the first row contains the names of the columns of the table), "sep=";"" (this function tells her that data in your text file are separated by ";") and "stringsAsFactors = FALSE" (this function is a logical that indicates whether strings in a data frame should be treated as factor variables or as just plain strings) options depending on the data source you are currently using. 
+
+An equivalent version is the "read_csv()" function from the "readr" library.
+
+```{r, eval = FALSE}
+library(readr)
+dataset <- read_csv(NULL)
+```
+
+## Uploading Data from Stata/SAS/SPSS
+
+In order to upload data from Stata, SAS or SPSS you need to install the "haven" library.
+
+```{r, eval = FALSE}
+library(haven)
+dataset <- read_sav(NULL) # for SPSS data
+dataset <- read_sas(NULL, NULL) # for SAS data
+dataset <- read_stata(NULL) # for Stata data
+```
+
+## Uploading Data from Excel
+
+In order to upload data from Excel you need to install the "readxl" library.
+
+\par In the following we will upload the Compustat Data that can be found [here](https://wrds-www.wharton.upenn.edu/). Compustat is a database of financial, statistical and market information on active and inactive global companies throughout the world. Here, we will focus just on northern-American enterprises financial account data in the years from 1997 to 2017.
+
+```{r}
+library(readxl)
+data <- read_excel("G:\\Il mio Drive\\Econometrics Lab\\Data\\Compustat Data.xlsx")
+```
+
+To see the data that you just uploaded you can use the "View" function. Beware that, as the size of your dataset increases, it may take some seconds to view your data.
+
+```{r, eval = FALSE}
+View(data)
+```
+
+When you upload "complex" data sources the first thing that you should check is the type of each column vector in the dataframe. You can do so by using the "str()" function.
+
+```{r}
+str(data)
+```
+
+As you can see, these data are a collection of "character" (chr) and "numeric" (num) vectors. "str()" reports also the dimension of the dataset: 266663 observations and 32 variables; and the classes of the dataset: "tibble" (tbl_df, tbl) and "data frame" (data.frame).
+
+What happens if we run the "summary()" function on non-numeric data? "R" just tells you that those columns contain "character} vectors. 
+
+\par Moreover, "summary()" gives you the number of "NA's" for each numeric column.
+
+```{r}
+summary(data)
+```
+
+A good way to start exploring your data is by checking if there is something "strange". As you can't go through all the observation, a good rule of thumbs is to check the "head" and "tail" of your data. The "head" and "tail" commands provide a good way to explore the first 6 and the last 6 observations in your data.
+
+```{r}
+head(data)
+tail(data)
+```
+
+## Subset your Data
+
+You can subset your data in two ways: 1. get a subset of columns (variables); 2. get a subset of rows (observations).
+
+In order to extract from your dataset a single column you can proceed in three ways: (i) extract the column by recalling its position, (ii-iii) extracting the column by its name. Keep in mind that R by defauls shows you the first 1000 observations of the selected column.
+
+```{r}
+colnames(data)
+head(data[,15])
+
+head(data$`Long-Term Debt - Total`)
+
+head(data[,c("Long-Term Debt - Total")]) #approximation
+```
+
+To subset a number of observation select them as follows:
+
+```{r}
+data[1:10,]
+```
+
+While to get a random sample of observation you can use the "sample function". This will be very useful when we will discuss machine learning algorithms as you will usually devide your dataset in a training set (on which you will build your machine learning algorithm) and a test set (on which you will test your algorithm).
+
+```{r}
+sample_of_observations <- sample(seq_len(nrow(data)), size = nrow(data)*0.1) 
+head(data[sample_of_observations,]) #10 percent of obs
+head(data[-sample_of_observations,]) #90 percent of obs
+```
+
+Moreover, you may want to subset your data based on a certain value of a variable.
+
+```{r}
+sub_data <-subset(data, !is.na(data$Employees))
+```
+
+
+## Missing Data
+
+Before starting your analysis it is central to check how the missing values are distributed.
+There are three categories of missing data:
+1. missing completely at random (MCAR);
+2. missing at random (MAR);
+3. missing not at random (MNAR).
+
+Missing Completely at Random, MCAR, means there is no relationship between the missingness of the data and any values, observed or missing. Those missing data points are a random subset of the data. There is nothing systematic going on that makes some data more likely to be missing than others.
+
+Missing at Random, MAR, means there is a systematic relationship between the propensity of missing values and the observed data. Whether an observation is missing has nothing to do with the missing values, but it does have to do with the values of an individual's observed variables. So, for example, if men are more likely to tell you their weight than women, weight is MAR.
+
+Missing Not at Random, MNAR, means there is a relationship between the propensity of a value to be missing and its values. This is a case where the people with the lowest education are missing on education or the sickest people are most likely to drop out of the study.
+
+MNAR is called "non-ignorable" because the missing data mechanism itself has to be modeled as you deal with the missing data. You have to include some model for why the data are missing and what the likely values are.
+
+"Missing Completely at Random" and "Missing at Random" are both considered 'ignorable' because we don't have to include any information about the missing data itself when we deal with the missing data.
+
+
+Each of these possible scenarios requires a different way to be handled.
+For instance, multiple imputation assumes the data are at least missing at random. So the important distinction here is whether the data are MAR as opposed to MNAR.
+Listwise deletion, however, requires the data are MCAR in order to not introduce bias in the results.
+
+1. MCAR vs. MAR and MNAR
+
+There is a very useful test for MCAR, Little's test. Using Little's test we can tests the null hypothesis that the missing data is MCAR ( [source](https://wiki.q-researchsoftware.com/wiki/Missing_Data_-_Little%27s_MCAR_Test) ). 
+A p.value of less than 0.05 is usually interpreted as being that the missing data is not MCAR (i.e., is either Missing At Random or MNAR).
+
+```{r, eval = FALSE}
+BaylorEdPsych::LittleMCAR(data)
+```
+
+But like all tests of assumptions, it's not definitive. So run it, but use it as only one piece of information.
+
+A second technique is to create dummy variables for whether a variable is missing.
+
+\begin{equation}
+k= \begin{cases}
+1 = missing; \\
+0 = observed.
+\end{cases}
+\end{equation}
+
+You can then run t-tests and chi-square tests between this variable and other variables in the data set to see if the missingness on this variable is related to the values of other variables.
+
+For example, if women really are less likely to tell you their weight than men, a chi-square test will tell you that the percentage of missing data on the weight variable is higher for women than men.
+
+2. MAR vs. MNAR
+
+The only true way to distinguish between MNAR and MAR is to measure some of that missing data. It's a common practice among professional surveyors to, for example, follow-up on a paper survey with phone calls to a group of the non-respondents and ask a few key survey items. This allows you to compare respondents to non-respondents.
+
+If their responses on those key items differ by very much, that's good evidence that the data are MNAR.
+
+However in most missing data situations, we don't have the luxury of getting a hold of the missing data. So while we can't test it directly, we can examine patterns in the data get an idea of what's the most likely mechanism ( [source](https://www.theanalysisfactor.com/missing-data-mechanism/) ).
+
+The Amelia package, developed by Harvard's professor Gary King and his colleagues, is probably the best tool to perform such an analysis.
+
+```{r}
+library(Amelia)
+missmap(data[1:100,], main = "Missing values vs Observed")
+```
+
+A good idea is not just to check the first observations, but to check a random sample of observations:
+
+```{r}
+missmap(data[1798:2198,], main = "Missing values vs Observed")
+```
+
+Three variables are found to have a high missing values rates (more than $90\%$ of missing values).
+
+```{r}
+summary(data$`Net Interest Income`)
+length(which(!is.na(data$`Net Interest Income`)))/nrow(data)
+
+summary(data$`Nonperforming Assets - Total`)
+length(which(!is.na(data$`Nonperforming Assets - Total`)))/nrow(data)
+
+summary(data$`Interest Expense - Total (Financial Services)`)
+length(which(!is.na(data$`Interest Expense - Total (Financial Services)`)))/nrow(data)
+```
+
+A way to deal with highly missing variables is to delete them from your data (using a subsetting option).
+
+```{r}
+dim(data)
+data <- data[, !names(data) %in% c("Interest Expense - Total (Financial Services)", "Net Interest Income", "Nonperforming Assets - Total")]
+dim(data)
+```
+
+Once we excluded the three variables with a high number of missing values (probably MNAR) we can remove the missing values from the dataset by making the explicit assumtion of MAR. This assumption is quite strong and "you do not want to do it in your real data analysis". You can try some different imputation methods in the packages "amelia" and "mice".
+
+```{r}
+data_clean <- na.omit(data)
+```
+
+## Plotting
+
+A good way to start exploring variation in your data is to visualize the distribution of your variables' values. R comes with some implemented functions for plotting (i.e., "plot", "hist", etc). Another good alternative for better looking plots is to use the functions implemented in the package "ggplot2". Here we will see how to make basic plots in both ways.
+
+\par How to visualize the distribution of a variable will depend on whether the variable is categorical or continuous. A variable is categorical if it can only take a small set of values. In R, categorical variables are usually saved as character vectors. You can use a bar chart to examine their distribution.
+
+```{r}
+library(ggplot2)
+ggplot(data = data_clean) +
+  geom_bar(mapping = aes(x = data_clean$`ISO Currency Code`))
+```
+
+The height of the bars displays how many observations occurred for each value of $x$.
+This can be done with the function "table".
+
+```{r}
+table(data_clean$`ISO Currency Code`)
+```
+
+A variable is continuous if it can take any of a large set of ordered values. You can examine the distribution of a contnuous variable by using a histogram.
+
+```{r}
+# Lets First Compare the Obs in Data v. Data_clean
+# Histogram
+hist(data_clean$`Data Year - Fiscal`)
+hist(data_clean$`Data Year - Fiscal`, 
+     col=2,
+     main = "Histogram",
+     sub = "Firms per Year Observations",
+     xlab = "Year",
+     ylab = "Frequency")
+axis(1, at=1997:2012, labels=c(seq(1997,2012,1)))
+```
+
+```{r}
+ggplot(data = data_clean) +
+  geom_histogram(mapping = aes(x = data_clean$`Data Year - Fiscal`), 
+                 binwidth = 0.5,
+                 fill="blue") +
+  scale_x_discrete(name ="Year", limits=c(seq(1997, 2012, 1))) +
+  scale_y_continuous(name = "Frequency") +
+  ggtitle("Firms per Year \n Observations") #\n to split long title into multiple lines.
+
+```
+
+
+```{r}
+table(data_clean$`Data Year - Fiscal`)
+```
+
+To check how two variable are covarying you can use a scatter plot (or two-way plot).
+
+```{r}
+plot(data_clean$`Assets - Total`, data_clean$`Sales/Turnover (Net)`)
+```
+
+```{r}
+ggplot(data = data_clean, 
+       mapping = aes(x = data_clean$`Assets - Total`,
+                       y = `Sales/Turnover (Net)`)) +
+   geom_point()
+```
+
+To draw multiple scatter plots you can use the "pairs" command.
+
+```{r}
+pairs(~ data_clean$Employees + data_clean$`Assets - Total` + data_clean$`Sales/Turnover (Net)` , data_clean)
+```
+
+An easy way to check if there are outliers in your data is by using a "boxplot".
+
+```{r}
+year <- as.factor(data_clean$`Data Year - Fiscal`)
+plot(year, data_clean$Employees)
+plot(year, data_clean$Employees, varwidth=T)
+plot(year, data_clean$Employees, varwidth=T, horizontal=T)
+plot(year, data_clean$Employees, varwidth=T, horizontal=T, xlab="Employees",ylab="Years")
+```
+
+Let's now focus on the density distribution of employees. 
+
+```{r}
+plot(density(data_clean$Employees))
+```
+
+```{r}
+summary(data_clean$Employees)
+```
+
+```{r}
+plot(density(data_clean$Employees[which(data_clean$Employees<0.591)]))
+```
+
+## Variables Simulation to Fit the Empirical Distribution
+
+You may want to compare the empirical distribution of a certain variable with a set of simulated distributions. Any statistical distribution can be generated from a statistical model and it provides a description of how the data were generated. 
+
+\par Before comparing empirical and simulated distributions, we can introduce the normal distribution. You can generate normally distributed data by using the "rnorm" function.
+
+```{r}
+x <- rnorm(1000, mean = 2, sd = 10)
+bin <- hist(x,100)
+```
+
+You can explore the cumulative density distribution of $x$ by running the "ecdf()" function.
+
+```{r}
+ecdf(x)
+plot(ecdf(x))
+```
+
+An plot that is extensively used to compare different distributions is quantile-quantile plot (remember that it is not a propbability distribution plot).
+
+\par A point (x, y) on the qq-plot corresponds to one of the quantiles of the second distribution (y-coordinate) plotted against the same quantile of the first distribution (x-coordinate). Thus the  line is a parametric curve with the parameter which is the (number of the) interval for the quantile.
+If the two distribution are similar the points of the qqplot are on the line x=y.
+
+```{r}
+qqnorm(x)
+qqline(x, col="red")
+```
+
+```{r}
+x_norm<-(x-mean(x))/sd(x)
+qqnorm(x_norm)
+abline(0,1)
+```
+
+If you want to test another distribution, you can still use the qq-plot.
+
+```{r}
+x_weibull<-rweibull(n=500,shape=3,scale=1.5)
+y_teo<-rweibull(n=500, shape=2.9, scale=1.45)
+qqplot(x_weibull,y_teo)
+abline(0,1)
+```
+
+
+```{r}
+#install.packages("fitdistrplus")
+library("fitdistrplus")
+plotdist(data_clean$Employees, histo = TRUE, demp = TRUE)
+```
+
+Let's now cut the tail of the distribution to get a "clearer" density of the variable.
+
+```{r}
+quantile(data_clean$Employees, probs = c(0.05, 0.95))
+employees <- data_clean$Employees[which(data_clean$Employees<8.3)] + 1
+plotdist(employees, histo = TRUE, demp = TRUE)
+```
+
+We can now try to fit a series of theoretical distribution to the empirical distribution of data. Let's first get some summary statistics on the min, max, median, mean, standard deviation, skewness (of the asymmetry of the probability distribution of a real-valued random variable about its mean; i.e., positive skewness means left leaning curve, while negative skewness means right leaning curve) and kurtosis (in probability theory and statistics, kurtosis is a measure of the "tailedness" of the probability distribution of a real-valued random variable) of the distribution. 
+
+```{r}
+descdist(employees, boot = 1000)
+```
+
+You can compare these values with the values of the standard normal distribution that previously generate.
+
+```{r}
+x<-rnorm(1000, mean = 0, sd = 1)
+descdist(x, boot = 1000)
+```
+
+Clearly, the distribution of the number of employees is not a normal distribution. 
+Let's see how this distribution "visually" compares with a Weibull, a Gamma and a log-normal distribution.
+
+```{r}
+# Weibull
+fw <- fitdist(employees, "weibull", method = "mle", lower = c(0, 0))
+plot(fw)
+```
+
+```{r}
+# Gamma
+fg <- fitdist(employees, "gamma", method = "mle", lower = c(0, 0))
+plot(fg)
+```
+
+```{r}
+# log-normal
+fln <- fitdist(employees, "lnorm",  method = "mle", lower = c(0, 0))
+plot(fln)
+```
+
+How about a power law distribution?
+
+```{r, include = FALSE}
+dplcon <- function (x, xmin, alpha, log = FALSE) 
+{
+    if (log) {
+        pdf = log(alpha - 1) - log(xmin) - alpha * (log(x/xmin))
+        pdf[x < xmin] = -Inf
+    }
+    else {
+        pdf = (alpha - 1)/xmin * (x/xmin)^(-alpha)
+        pdf[x < xmin] = 0
+    }
+    pdf
+}
+pplcon <- function (q, xmin, alpha, lower.tail = TRUE) 
+{
+    cdf = 1 - (q/xmin)^(-alpha + 1)
+    if (!lower.tail) 
+        cdf = 1 - cdf
+    cdf[q < round(xmin)] = 0
+    cdf
+}
+qplcon <- function(p,xmin,alpha) alpha*p^(1/(1-xmin))
+```
+
+```{r}
+# power-law distribution
+plw <- fitdist(employees, "plcon", 
+               start = list(xmin=1,alpha=2),
+               lower = c(xmin = 0, alpha = 1))
+plot(plw)
+```
+
+Now we can make a comparative plot with all the theoretical distributions and the empirical distribution.
+
+```{r}
+par(mfrow = c(2, 2))
+plot.legend <- c("Weibull", "lognormal", "gamma", "Power law")
+
+denscomp(list(fw, fln, fg, plw), legendtext = plot.legend)
+qqcomp(list(fw, fln, fg, plw), legendtext = plot.legend)
+cdfcomp(list(fw, fln, fg, plw), legendtext = plot.legend)
+ppcomp(list(fw, fln, fg, plw), legendtext = plot.legend)
+```
+
+The P-P plot (probability-probability plot or percent-percent plot or P value plot) is a probability plot for assessing how closely two data sets agree, which plots the two cumulative distribution functions against each other.
+
+Kolmogorov-Smirnov, Cramer-von Miser and Anderson-Darling are all goodness-of-fit statistics based on the CDF distance (i.e., the Kolmogorov-Smirnov statistic quantifies a distance between the empirical distribution function of the sample and the cumulative distribution function of the reference distribution, or between the empirical distribution functions of two samples).
+AIC and BIC are classical penalized criteria based on the loglikehood
+
+```{r}
+gofstat(list(fw, fln, fg, plw),fitnames = c("weibull", "lognorma", "gamma", "Power law"))
+```
