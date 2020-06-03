@@ -1,15 +1,14 @@
 ---
 title: "Lecture 1: R basics"
 author: "Falco J. Bargagli-Stoffi"
-date: "14/10/2019"
-output: 
-  pdf_document:
-     keep_tex: true
+date: "03/06/2020"
+output:
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = 'G:\\Il mio Drive\\Teaching\\Data Science Lab\\Lecture 1')
+knitr::opts_knit$set(root.dir = 'G:\\Il mio Drive\\github\\lab-data-science.github.io\\r_code')
 ```
 
 # Introduction to R

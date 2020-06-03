@@ -1,10 +1,9 @@
 ---
-title: "Data Modeling"
-author: "Falco"
-date: "24/10/2019"
+title: "Lecture 3: Data Modeling"
+author: "Falco J. Bargagli Stoffi"
+date: "10/06/2020"
 output:
-    pdf_document:
-     keep_tex: true
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}

@@ -1,8 +1,9 @@
 ---
-title: "Exploratory Data Analysis"
-author: "Falco"
-date: "21/10/2019"
-output: html_document
+title: "Lecture 2: Exploratory Data Analysis"
+author: "Falco J. Bargagli Stoffi"
+date: "05/06/2020"
+output:
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
