@@ -31,21 +31,30 @@ In this lecture we will go see how to perform in R two types of models:
 
 As you have probably seen the former in your econometric classes, I will skip the mathematical details, and focus on the the function used to build these models and on the intepretation of their outputs.
 
-```{r}
+```{r, warning=FALSE}
 library(tidyverse)
 library(modelr)
+library(hdm)
+library(stabs)
+library(AER)
+library(sandwich)
+library(lmtest)
+library(broom)
 ```
 
 ```{r}
 library(readxl)
 data <- read_excel("G:\\Il mio Drive\\Econometrics Lab\\Data\\Compustat Data.xlsx")
-data <- data[, !names(data) %in% c("Interest Expense - Total (Financial Services)", "Net Interest Income", "Nonperforming Assets - Total")]
+data <- data[, !names(data) %in% c("Interest Expense - Total (Financial Services)",
+                                   "Net Interest Income", "Nonperforming Assets - Total")]
 data_clean <- na.omit(data)
 ```
 
 ```{r}
-x <- data_clean$`Assets - Total`[which(data_clean$`Assets - Total`< quantile(data_clean$`Assets - Total`, 0.95))]
-y <- data_clean$`Sales/Turnover (Net)`[which(data_clean$`Assets - Total`< quantile(data_clean$`Assets - Total`, 0.95))]
+x <- data_clean$`Assets - Total`[which(data_clean$`Assets - Total`< 
+                                 quantile(data_clean$`Assets - Total`, 0.95))]
+y <- data_clean$`Sales/Turnover (Net)`[which(data_clean$`Assets - Total`<
+                                quantile(data_clean$`Assets - Total`, 0.95))]
 
 reg_data <- as.data.frame(cbind(x, y))
 ```
@@ -215,7 +224,8 @@ summary(model_1)
 Now let's add an additional variable in the linear regression to compare the two different models.
 
 ```{r}
-z <- data_clean$Employees[which(data_clean$`Assets - Total`< quantile(data_clean$`Assets - Total`, 0.95))]
+z <- data_clean$Employees[which(data_clean$`Assets - Total`<
+                          quantile(data_clean$`Assets - Total`, 0.95))]
 reg_data <- cbind(reg_data, z)
 ```
 
@@ -298,130 +308,186 @@ model_squared<-lm(y ~ x  +  x2 + z, data = reg_data)
 summary(model_squared)
 ```
 
-## Non-linear predictive model
+## Variables Selection
 
-In some scenarios we may be interested in building a statistical model to predict a certain outcome. In this case, for instance, we may want to use different models to predict the location of a firm. The Compustat data entail US and Canadian enterprises. In the next chunks of code I will build three different models (logistic regression, CART and Random Forest) to predict the location of the firm. 
+Here, I am going to show an application based based on an article from Barro and Lee (1994). The hypothesis we want to test is if less developed countries, with lower GDP per capita, grow faster than developed countries. In other words, there is a catch up effect. The model equation is as follows:
 
-Before running the analyses, I restict the set of predictors to the following variables and I create a dummy variable that assumes value 1 if the firm is located in the US and 0 if it is located in Canada.
+\begin{equation}
+ y_i=\alpha_0d_i+\sum_{i=1}^p\beta_jx_{i,j}+\varepsilon_i
+\end{equation}
 
-```{r}
-library(caret)
-myvariables <- c("ISO Currency Code",
-                 "Assets - Total", "Average Short-Term Borrowings",
-                 "Current Assets - Total", "Long-Term Debt Due in One Year",
-                 "Debt in Current Liabilities - Total", "Employees",
-                 "Earnings Before Interest and Taxes", "Liabilities - Total",
-                 "Net Income (Loss)", "In Process R&D Expense",
-                 "GIC Sectors", "Standard Industry Classification Code")
-data_prediction <- data_clean[myvariables]
-data_prediction$iso_code <- ifelse(data_prediction$`ISO Currency Code`=="USD", 1, 0)
-data_prediction <- data_prediction[, !names(data_prediction) %in% c("ISO Currency Code")]
-```
+where $y_i$ is the GDP growth rate over a specific decade in country $i, d_i$ is the log of the GDP at the beginning of the decade, $x_{i,j}$ are controls that may affect the GDP. We want to know the effects of $d_i$ on $y_i$, which is measured by $\alpha_0$. If our catch up hypothesis is true, $\alpha_0$ must be positive and hopefully significant.
 
-In order to check how good are the three models, I randomly split the data into two disjoint sets: a training set that I will use to build the model and a test set that I will use to validate the quality of the model's prediction.
+The dataset is available in the package. It has 62 variables and 90 observations. Each observation is a country, but the same country may have more than one observation if analysed in two different decades. The large number of variables will require some variable selection, and I will show what happens if we use a single LASSO selection and the Double Selection. The hdm package does all the DS steps in a single line of code, we do not need to estimate the two selection models and the Post-OLS individually. I will also run a naive OLS will all variables just for illustration.
+This application can be found [here](https://www.r-bloggers.com/the-package-hdm-for-double-selection-inference-with-a-simple-example/).
 
 ```{r}
-set.seed(123)
-index <- sample(seq_len(nrow(data_prediction)),
-                    size = nrow(data_prediction)*0.5) 
-
-train <- data_prediction[index,]
-test <- data_prediction[-index,]
-```
-
-### Logistic Regression
-
-The first model that I run is a logistic regression with the inclusion of all the covariates.
-
-```{r}
-
-logit<-glm(iso_code ~ ., data= train, family=binomial(link='logit'))
-summary(logit)
-```
-
-To get the accuracy of the model I first get the predicted probabilities, then impute the values for the outcome variable and then check the root-mean-squared-error (RMSE), the mean-absolute error (MAE), the $R^2$ and the confusion matrix.
-
-```{r}
-#Accurancy from cv
-fitted.results.logit <- predict(logit, newdata = test, type='response')
-fitted.logit <- ifelse(fitted.results.logit >= 0.5, 1, 0)
-
-# RMSE
-caret::postResample(fitted.logit, test$iso_code)
-
-#For good predictive model the chi and RMSE values should be low 
-confusionMatrix(data = as.factor(fitted.logit),
-                reference = as.factor(test$iso_code))
-```
-
-### Classification and Regression Tree
-
-The second model that I run is a classification and regression tree from the "rpart" package in R.
-
-```{r}
-library(rpart)
-rpart <- rpart(iso_code ~ ., data=train, method="class") 
-
-printcp(rpart) # display the results 
-plotcp(rpart) # visualize cross-validation results 
-summary(rpart) # detailed summary of splits
-```
-
-You can depict the classification tree by using the "plot()" function.
-
-```{r}
-#Plot tree 
-rpart.plot::rpart.plot(rpart)
+rm(list=ls())
+data("GrowthData") # = use ?GrowthData for more information = #
+dataset <- GrowthData[,-2] # = The second column is just a vector of ones = #
 ```
 
 ```{r}
-#Accurancy from cv
-fitted.results.rpart <- predict(rpart, newdata=test,type='prob')
-fitted.rpart <- ifelse(fitted.results.rpart[,2] >= 0.5, 1, 0)
-
-# RMSE
-caret::postResample(fitted.rpart, test$iso_code)
-
-#For good predictive model the chi and RMSE values should be low 
-confusionMatrix(data = as.factor(fitted.rpart),
-                reference = as.factor(test$iso_code))
+# = Naive OLS with all variables = #
+# = I will select only the summary line that contains the initial log GDP = #
+summary(lm(Outcome ~., data = dataset))
 ```
 
-### Random Forest
-
-The last model that I build is a random forest from the "randomForest" package.
+```{r}
+OLS <- summary(lm(Outcome ~., data = dataset))$coefficients[1, ]
+OLS
+```
 
 ```{r}
-library(randomForest)
-colnames(train) <- c("assets", "short_term_borrow",
-                     "current_assets", "debt",
-                     "debt_liabilities", "employees", 
-                     "EBIT", "liabilities",
-                     "net_income", "r_d",
-                     "gic", "SICC", "iso_code")
-colnames(test) <- c("assets", "short_term_borrow",
-                     "current_assets", "debt",
-                     "debt_liabilities", "employees", 
-                     "EBIT", "liabilities",
-                     "net_income", "r_d",
-                     "gic", "SICC", "iso_code")
-set.seed(133234)
-rf <- randomForest(iso_code ~ ., data=train, importance=TRUE, ntree=200)
+rlasso(Outcome~., data = dataset, post = FALSE)
+# = Single step selection LASSO and Post-OLS = #
+# = I will select only the summary line that contains the initial log GDP = #
+lasso <- rlasso(Outcome~., data = dataset, post = FALSE) # = Run the Rigorous LASSO = #
+selected <- which(coef(lasso)[-c(1:2)] !=0) # = Select relevant variables = #
+selected
+fm <- paste(c("Outcome ~ gdpsh465", names(selected)), collapse = "+")
+SS <- summary(lm(fm, data = dataset))$coefficients[1, ]
+SS
+```
+
+```{r}
+# = Double Selection = #
+X <- as.matrix(dataset[,-1])
+y <- dataset$Outcome
+DS <- rlassoEffects(X , y, I = ~ dataset$gdpsh465, data = dataset)
+DS <- summary(DS)$coefficients[1,]
+```
+
+```{r}
+results <- rbind(OLS,SS,DS)
+results
+```
+
+The OLS estimate is positive, however the standard error is very big because we have only 90 observations for more than 60 variables. The Single Selection estimate is also positive and, in this case, significant. However, the Double Selection showed a negative and significant coefficient. If the DS is correct, our initial catch up hypothesis is wrong and poor countries grow less than rich countries. We can't say that the DS is correct for sure, but it is backed up by a strong theory and lots of simulations that show that the SS is problematic. It is very, very unlikely that the SS results are more accurate than the DS. It is very surprising how much the results can change from one case to the other. You should at least be skeptic when you see this type of modelling and the selection of controls is not clear.
+
+The "hdm" package has several other implementations in this framework such as instrumental variables and logit models and there are also more examples in the package vignette.
+
+## Stability Selection
+
+```{r, warning=FALSE}
+  ####################################################################
+  ### using stability selection with Lasso methods:
+
+  if (require("lars")) {
+      (stab.lasso <- stabsel(x = X, y = y,
+                             fitfun = lars.lasso, cutoff = 0.75,
+                             PFER = 1))
+      (stab.stepwise <- stabsel(x = X, y = y,
+                                fitfun = lars.stepwise, cutoff = 0.75,
+                                PFER = 1))
+      plot(stab.lasso, main = "Lasso")
+      plot(stab.stepwise, main = "Stepwise Selection")
+      ## --> stepwise selection seems to be quite unstable even in this low
+      ##     dimensional example!
+  }
+
+  ## set seed (again to make results comparable)
+  set.seed(1234)
+  if (require("glmnet")) {
+      (stab.glmnet <- stabsel(x = X, y = y,
+                              fitfun = glmnet.lasso, cutoff = 0.75,
+                              PFER = 1))
+      plot(stab.glmnet, main = "Lasso (glmnet)")
+      if (exists("stab.lasso"))
+          plot(stab.lasso, main = "Lasso (lars)")    
+  }
   
-predict.rf <- predict(rf, test)
-fitted.rf <- as.numeric(predict.rf > 0.5)
-print(rf)
-plot(rf)
-varImpPlot(rf)
+  
+  ## Select variables with maximum coefficients based on lasso estimate
+  
+  set.seed(1234) # reset seed
+  if (require("glmnet")) {
+      ## use cross-validated lambda 
+      lambda.min <- cv.glmnet(x = as.matrix(X), y = y)$lambda.min
+      (stab.maxCoef <- stabsel(x = X, y = y,
+                               fitfun = glmnet.lasso_maxCoef, 
+                               # specify additional parameters to fitfun
+                               args.fitfun = list(lambda = lambda.min),
+                               cutoff = 0.75, PFER = 1))
+                               
+      ## WARNING: Using a fixed penalty (lambda) is usually not permitted and 
+      ##          not sensible. See ?fitfun for details.
+      
+      ## now compare standard lasso with "maximal parameter estimates" from lasso
+      plot(stab.maxCoef, main = "Lasso (glmnet; Maximum Coefficients)")
+      plot(stab.glmnet, main = "Lasso (glmnet)")
+      ## --> very different results.
+  }
 
-#Fitted results Random Forest
-caret::postResample(fitted.rf, test$iso_code)
-
-#For good predictive model the chi and RMSE values should be low 
-confusionMatrix(data = as.factor(fitted.rf),
-                reference = as.factor(test$iso_code))
 ```
 
+## Instruments Selection
 
+Reproduction of the analysis by Angrist and Krueger (1991).
 
+```{r}
+load("G:\\Il mio Drive\\Teaching\\Data Science Lab 2020\\angrist_krueger_1991.rda")
+ak91 <- mutate(ak91,
+               qob_fct = factor(qob),
+               q4 = as.integer(qob == "4"),
+               yob_fct = factor(yob))
+```
 
+Regress log wages on 4th quarter.
+
+```{r}
+mod1 <- lm(lnw ~ q4, data = ak91)
+coeftest(mod1, vcov = sandwich)
+```
+
+Regress years of schooling on 4th quarter.
+
+```{r}
+mod2 <- lm(s ~ q4, data = ak91)
+coeftest(mod2, vcov = sandwich)
+```
+
+IV regression of log wages on years of schooling, with 4th quarter as an instrument for years of schooling.
+
+```{r}
+mod3 <- ivreg(lnw ~ s | q4, data = ak91)
+coeftest(mod3, vcov = sandwich)
+```
+
+Regression Estimates of Returns to Schooling using Quarter of Birth Instruments
+
+```{r}
+mod4 <- lm(lnw ~ s, data = ak91)
+coeftest(mod4, vcov = sandwich)
+```
+
+IV reg using all quarters as instruments. Controls for year of birth.
+
+```{r}
+mod5 <- ivreg(lnw ~ s + yob_fct | qob_fct + yob_fct, data = ak91)
+summary(mod8, vcov = sandwich, diagnostics = TRUE)
+
+```
+
+Average years of schooling by quarter of birth for men born in 1930-39 in the 1980 US Census.
+
+```{r}
+ggplot(ak91_age, aes(x = yob + (qob - 1) / 4, y = s)) +
+  geom_line() +
+  geom_label(mapping = aes(label = qob, color = q4)) +
+  theme(legend.position = "none") +
+  scale_x_continuous("Year of birth", breaks = 1930:1940) +
+  scale_y_continuous("Years of Education", breaks = seq(12.2, 13.2, by = 0.2),
+                     limits = c(12.2, 13.2))
+```
+
+Average log wages by quarter of birth for men born in 1930-39 in the 1980 US Census.
+
+```{r}
+ggplot(ak91_age, aes(x = yob + (qob - 1) / 4, y = lnw)) +
+  geom_line() +
+  geom_label(mapping = aes(label = qob, color = q4)) +
+  scale_x_continuous("Year of birth", breaks = 1930:1940) +
+  scale_y_continuous("Log weekly wages") +
+  theme(legend.position = "none")
+```
