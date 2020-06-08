@@ -465,13 +465,17 @@ IV reg using all quarters as instruments. Controls for year of birth.
 
 ```{r}
 mod5 <- ivreg(lnw ~ s + yob_fct | qob_fct + yob_fct, data = ak91)
-summary(mod8, vcov = sandwich, diagnostics = TRUE)
+summary(mod5, vcov = sandwich, diagnostics = TRUE)
 
 ```
 
 Average years of schooling by quarter of birth for men born in 1930-39 in the 1980 US Census.
 
 ```{r}
+ak91_age <- ak91 %>%
+  group_by(qob, yob) %>%
+  summarise(lnw = mean(lnw), s = mean(s)) %>%
+  mutate(q4 = (qob == 4))
 ggplot(ak91_age, aes(x = yob + (qob - 1) / 4, y = s)) +
   geom_line() +
   geom_label(mapping = aes(label = qob, color = q4)) +
