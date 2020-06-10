@@ -112,8 +112,9 @@ measure_distance <- function(mod, data) {
  diff <- data$y - model1(mod, data)
  sqrt(mean(diff ^ 2))
 }
-measure_distance(c(50, 1.5), sim1)
+measure_distance(c(50, 1.5), reg_data)
 ```
+
 We can use "purrr" to compute the distance for all the models defined previously. We will need a helper function because our distance expectes the model as a numeric vector of length 2.
 
 ```{r}
@@ -150,7 +151,7 @@ models, this time by drawing red circles underneath them:
 ```{r}
 ggplot(models, aes(beta1, beta2)) +
  geom_point(
- data = filter(models, rank(dist) <= 10),
+ data = filter(models, rank(dist) <= 1),
  size = 4, color = "red"
  ) +
  geom_point(aes(colour = -dist))
@@ -167,7 +168,7 @@ grid <- expand.grid(
 grid %>%
  ggplot(aes(beta1, beta2)) +
  geom_point(
- data = filter(grid, rank(dist) <= 10),
+ data = filter(grid, rank(dist) <= 1),
  size = 4, colour = "red"
  ) +
  geom_point(aes(color = -dist))
@@ -182,17 +183,11 @@ ggplot(reg_data, aes(x, y)) +
  geom_point(size = 2, color = "grey30") +
  geom_abline(
  aes(intercept = beta1, slope = beta2, color = -dist),
- data = filter(grid, rank(dist) <= 10)
+ data = filter(grid, rank(dist) <= 1)
  )
 ```
 
-You could imagine iteratively making the grid finer and finer until
-you narrowed in on the best model. But there's a better way to tackle
-that problem: a numerical minimization tool called Newton-Raphson search. The intuition of Newton-Raphson is pretty simple: you
-pick a starting point and look around for the steepest slope. You
-then ski down that slope a little way, and then repeat again and
-again, until you can't go any lower. In R, we can do that with
-optim():
+You could imagine iteratively making the grid finer and finer until you narrowed in on the best model. But there's a better way to tackle that problem: a numerical minimization tool called Newton-Raphson search. The intuition of Newton-Raphson is pretty simple: you pick a starting point and look around for the steepest slope. You then ski down that slope a little way, and then repeat again and again, until you can't go any lower. In R, we can do that with optim():
 
 ```{r}
 best <- optim(c(0, 0), measure_distance, data = reg_data)
@@ -205,21 +200,11 @@ ggplot(reg_data, aes(x, y)) +
  geom_abline(intercept = best$par[1], slope = best$par[2])
 ```
 
-Don't worry too much about the details of how optim() works. It's
-the intuition that's important here. If you have a function that
-defines the distance between a model and a dataset, and an algorithm that can minimize that distance by modifying the parameters
-of the model, you can find the best model. The neat thing about this
-approach is that it will work for any family of models that you can
-write an equation for.
-There's one more approach that we can use for this model, because it
-is a special case of a broader family: linear models. A linear model
-has the general form $y = a_1 + a_2 \cdot x_1 + a_3 \cdot x_2 + ... + a_n \cdot x_{(n - 1)}$. So this simple model is equivalent to a general
-linear model where n is 2 and $x_1$ is $x$. R has a tool specifically
-designed for fitting linear models called lm(). lm() has a special way
-to specify the model family: formulas. Formulas look like $y ~ x$,
-which lm() will translate to a function like $y = a_1 + a_2 * x$. We
-can fit the model and look at the output:
-
+Don't worry too much about the details of how optim() works. It's the intuition that's important here. If you have a function that defines the distance between a model and a dataset, and an algorithm that can minimize that distance by modifying the parameters of the model, you can find the best model. The neat thing about this approach is that it will work for any family of models that you can
+write an equation for. There's one more approach that we can use for this model, because it
+is a special case of a broader family: linear models. A linear model has the general form
+$y = a_1 + a_2 \cdot x_1 + a_3 \cdot x_2 + ... + a_n \cdot x_{(n - 1)}$. 
+So this simple model is equivalent to a general linear model where n is 2 and $x_1$ is $x$. R has a tool specifically designed for fitting linear models called lm(). lm() has a special way to specify the model family: formulas. Formulas look like $y ~ x$, which lm() will translate to a function like $y = a_1 + a_2 * x$. We can fit the model and look at the output:
 
 ```{r}
 model_1 <- lm(y ~ x, data = reg_data)
@@ -309,7 +294,7 @@ You can't directly introduce a quadratic term in the regression formula. Hence, 
 
 ```{r}
 x2 <- x^2
-model_squared<-lm(y ~ x  +  x2 + z, data = reg_data)
+model_squared<-lm(y ~ x  +  x2 + z + x*z, data = reg_data)
 summary(model_squared)
 ```
 
@@ -432,42 +417,6 @@ ak91 <- mutate(ak91,
                yob_fct = factor(yob))
 ```
 
-Regress log wages on 4th quarter.
-
-```{r}
-mod1 <- lm(lnw ~ q4, data = ak91)
-coeftest(mod1, vcov = sandwich)
-```
-
-Regress years of schooling on 4th quarter.
-
-```{r}
-mod2 <- lm(s ~ q4, data = ak91)
-coeftest(mod2, vcov = sandwich)
-```
-
-IV regression of log wages on years of schooling, with 4th quarter as an instrument for years of schooling.
-
-```{r}
-mod3 <- ivreg(lnw ~ s | q4, data = ak91)
-coeftest(mod3, vcov = sandwich)
-```
-
-Regression Estimates of Returns to Schooling using Quarter of Birth Instruments
-
-```{r}
-mod4 <- lm(lnw ~ s, data = ak91)
-coeftest(mod4, vcov = sandwich)
-```
-
-IV reg using all quarters as instruments. Controls for year of birth.
-
-```{r}
-mod5 <- ivreg(lnw ~ s + yob_fct | qob_fct + yob_fct, data = ak91)
-summary(mod5, vcov = sandwich, diagnostics = TRUE)
-
-```
-
 Average years of schooling by quarter of birth for men born in 1930-39 in the 1980 US Census.
 
 ```{r}
@@ -493,4 +442,44 @@ ggplot(ak91_age, aes(x = yob + (qob - 1) / 4, y = lnw)) +
   scale_x_continuous("Year of birth", breaks = 1930:1940) +
   scale_y_continuous("Log weekly wages") +
   theme(legend.position = "none")
+```
+
+
+Regress log wages on 4th quarter.
+
+```{r}
+mod1 <- lm(lnw ~ q4, data = ak91)
+coeftest(mod1, vcov = sandwich)
+```
+
+Regress years of schooling on 4th quarter.
+
+```{r}
+mod2 <- lm(s ~ q4, data = ak91)
+coeftest(mod2, vcov = sandwich)
+```
+
+IV regression of log wages on years of schooling, with 4th quarter as an instrument for years of schooling.
+
+```{r}
+mod3 <- ivreg(lnw ~ s | q4, data = ak91)
+coeftest(mod3, vcov = sandwich, diagnostics = TRUE)
+```
+
+IV reg using interaction between years and quarters as instruments. Controls for year of birth.
+
+```{r}
+mod4 <- ivreg(lnw ~ s | q4*yob_fct, data = ak91)
+summary(mod4, vcov = sandwich, diagnostics = TRUE)
+```
+
+```{r}
+lasso <- rlasso(s ~ q4*yob_fct, data = ak91, post = FALSE) # = Run the Rigorous LASSO = #
+selected <- which(coef(lasso)[-c(1:2)] !=0) # = Select relevant variables = #
+selected
+
+ak91$yob_fct1936 <- ifelse(ak91$yob_fct==1936,1,0)
+mod5 <- ivreg(lnw ~ s | q4*yob_fct1936,
+                        data = ak91)
+summary(mod5, vcov = sandwich, diagnostics = TRUE)
 ```
