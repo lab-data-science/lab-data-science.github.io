@@ -1,5 +1,5 @@
 ---
-title: "Lecture 4: Causal Machine Learning"
+title: "Lecture 4: Predictive Modeling"
 author: "Falco J. Bargagli Stoffi"
 date: "11/06/2020"
 output:
@@ -8,275 +8,511 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = 'G:\\Il mio Drive\\Teaching\\Data Science Lab\\Lecture 4')
+knitr::opts_knit$set(root.dir = 'G:\\Il mio Drive\\Teaching\\Data Science Lab\\Lecture 3')
 ```
 
-# Causal Machine Learning
+In some scenarios we may be interested in building a statistical model to predict an outcome. In this case, for instance, we may want to use different models to predict the location of a firm. The Compustat data entail US and Canadian enterprises. In the next chunks of code I will build five different models (logistic regression, CART, Conditional Inference Tree, Random Forest, Bayesian Additive Regression Trees) to predict the location of the firm.
 
-In this lecture, we will see two applications of causal machine learning in economics. For the mathematical details of the methods depicted in the following please refer to the lecture's slides. The methods that we will see here are the following:
-1. machine learning for the estimation of heterogeneous causal effects (Athey and Imbens, 2015; 2016);
-2. machine learning for the selection of instrumental variables in high-dimensional scenarios (Belloni et al., 2014).
+Moreover, I will provide details on the most widely used performance measures in the case of a classification problem.
 
-## Heterogeneous Causal Effects
-
-In the first application, we will reproduce the results from a paper by Benjamin Jones (Northwestern) and Benjamin Olken (MIT), published on the "American Economic Journal" in 2009.
-
-The abstact of the paper is the following: \textit{"Assassinations are a persistent feature of the political landscape. Using a new dataset of assassination attempts on all world leaders from 1875 to 2004, we exploit inherent randomness in the success or failure of assassination attempts to identify the effects of assassination. We find that, on average, successful assassinations of autocrats produce sustained moves toward democracy. We also find that assassinations affect the intensity of small-scale conflicts. The results document a contemporary source of institutional change, inform theories of conflict, and show that small sources of randomness can have a pronounced effect on history."}
-
-This paper provides a particularly interesting application for machine learning methodologies in service of detecting and estimating heterogeneous causal effects. Indeed, a possible research question, can be the following: \textit{"in which specific cases are the assassinations of autocrats more effective in driving a shift towards a democracy?"}.
-
-This is just one simple question on a freely available dataset. However, there are hundreds of possibly interesting research questions regarding conditional effects on ready-to-use datasets!
-
-First things first, let's upload the data using the "read.dta" function.
-
-```{r warning=FALSE}
-rm(list=ls())
-setwd("G:\\Il mio Drive\\Teaching\\Data Science Lab\\Lecture 4")
-library('foreign')
-assassination <- read.dta("mergeddata.dta")
-```
-
-Let's see how are the data. You can find a "Data Codebook" in the lecture's folder that can help you navigate through the data.
-
-```{r}
-library(Hmisc)
-summary(assassination)
-```
-
-We can use the "mice" package that we saw in the last lecture to impute the missing values.
-
-```{r results=FALSE}
-library(mice)
-data <- assassination[which(!is.na(assassination$polity2) & !is.na(assassination$result)),]
-variables <- c("polity2", "year", "result", "age", "country", "weapon1",
-                "region", "deadinattempt", "woundedinattempt", "solo", "loccntry")
-data_attempt <- data[variables]
-imputed_data <- mice(data_attempt, m = 5, maxit = 50, method = 'pmm', seed = 500)
-demdata <- complete(imputed_data, 2)
-```
-
-Let's now define, following the paper, the outcome variable (democracy) and the treatment indicator (success). 
-
-```{r}
-demdata$success <- ifelse(demdata$result <= 19, 1, 0)
-demdata$democracy <- ifelse(demdata$polity2 < 0, 0, 1)
-```
-
-### Sample Balance
-
-We can explore the sample balance by using the "MatchIt" package. "MatchIt" provides a series of functions to perform matching. In a nutshell, matching is a statistical technique which is used to evaluate the effect of a treatment by comparing the treated and the non-treated units in an observational study or quasi-experiment (i.e. when the treatment is not randomly assigned). The goal of matching is, for every treated unit, to find one (or more) non-treated unit(s) with similar observable characteristics against whom the effect of the treatment can be assessed. By matching treated units to similar non-treated units, matching enables a comparison of outcomes among treated and non-treated units to estimate the effect of the treatment reducing bias due to confounding.
-
-Here, we will compare the balance in the covariates in the group of treated and control variables (which is a proxy for unconfoundedness to hold). We will perform this analysis on the matched sample and the non-matched sample. 
-
-```{r}
-#install.packages("MatchIt")
-library(MatchIt)
-m.nn <- matchit(success ~ year +  age + weapon1 + solo +
-                   region +  deadinattempt +  woundedinattempt,
-                   data = demdata, method = "nearest", m.order="largest")	
-```
-
-```{r}
-plot(m.nn, type='hist', col="red")
-```
-
-Here, we get the standardized differences in means between the matched and non-matched units.
-
-```{r}
-st.diff.mean.before <- summary(m.nn,standardize=TRUE)$sum.all[,4]
-st.diff.mean.after <- summary(m.nn,standardize=TRUE)$sum.matched[,4]
-st.diff.mean.before
-st.diff.mean.after
-tabellareplace <- cbind(st.diff.mean.before, st.diff.mean.after)
-rownames(tabellareplace) <- c("propensity_score", "year", "age", "weapon1", "solo",
-                            "region", "deadinattempt", "woundedinattempt")
-#xtable(tabellareplace)
-```
-
-We can use a loveplot to check the differences in these samples. It is always useful to depict a loveplot when you are performing a policy evaluation.
-
-```{r}
-par(mfrow=c(1,1))
-par(mar=c(2,5,2,5), xpd=FALSE)
-plot(st.diff.mean.before, 1:length(st.diff.mean.after), col="black",
-     xlab=NA, ylab=NA, yaxt="n",
-     xlim=c(min(c(st.diff.mean.before,st.diff.mean.after)),
-            max(c(st.diff.mean.before,st.diff.mean.after))
-     ),
-     pch=23,
-     main="Standardized difference in means for covariates")
-points(st.diff.mean.after, 1:length(st.diff.mean.after), col="red", pch=19)
-axis(2, labels=rownames(tabellareplace), at=1:nrow(tabellareplace), las=1)
-abline(h=1:9, lty="dotted")
-abline(v=0, lwd=2)
-par(xpd=TRUE)
-legend("right",
-       inset = c(-0.2,0),
-       legend = c("Initial", "Matched"),
-       pch = c(23, 19),
-       col = c("black", "red"),
-       cex = 1)
-```
-
-Once we checked the balance in the two samples of treated and control units we can estimate the Average Treatment Effect (ATE), together with its 95\% confidence interval.
-
-```{r}
-t.test(demdata$democracy[demdata$success==1], demdata$democracy[demdata$success==0])
-ATE <- mean(demdata$democracy[demdata$success==1]) - mean(demdata$democracy[demdata$success==0])
-var.ate <- var(demdata$democracy[demdata$success==1])/length(which(demdata$success==1)) +
-           var(demdata$democracy[demdata$success==0])/length(which(demdata$success==0))
-ub <- ATE +1.96*sqrt(var.ate)
-lb <- ATE -1.96*sqrt(var.ate)
-```
-
-```{r}
-ATE
-ub
-lb
-```
-
-We find that transitions to democracy, as measured using the Polity IV dataset (Monty G. Marshall and Keith Jaggers 2004), are 12 percentage points more likely following the assassination of an autocrat. This validates the analysis of Jones and Olker (2009). However, the results are not statistically significant.
-
-Hence, we perform the same analysis on matched units.
-
-```{r}
-# Same Analysis on Matched Units
-m.mydata <- match.data(m.nn)
-head(m.mydata)
-
-t.test(m.mydata$democracy[m.mydata$success==1], m.mydata$democracy[m.mydata$success==0])
-ATE <- mean(m.mydata$democracy[m.mydata$success==1]) - mean(m.mydata$democracy[m.mydata$success==0])
-var.ate <- var(m.mydata$democracy[m.mydata$success==1])/length(which(m.mydata$success==1)) +
-           var(m.mydata$democracy[m.mydata$success==0])/length(which(m.mydata$success==0))
-ub <- ATE +1.96*sqrt(var.ate)
-lb <- ATE -1.96*sqrt(var.ate)
-```
-
-```{r}
-ATE
-ub
-lb
-```
-
-### Heterogeneous Effects
-
-After discussing the results on the overall average treatment effect, it is time to dig deeper into the conditional effects.
-
-Here, I will reproduce the methodologies proposed by Athey and Imbens (2015). (i) I will start from a single tree for treated and control units, (ii) I will show the results for two trees (1 tree for treated units and 1 tree for controls), and finally (iii) I will depict the results from the Causal Tree.
-
-```{r}
-# Build One Tree
+```{r, warning=FALSE}
+library(readxl)
+library(caret)
+library(randomForest)
+library(bartMachine)
+library(PRROC)
 library(rpart)
-one.tree <- rpart(as.factor(democracy) ~ year + age + weapon1 + solo +
-                    region +  deadinattempt +  woundedinattempt,
-                  data = demdata)
-yhat_1 <- predict(one.tree, demdata[demdata$success==1,], type = "class")
-yhat_0 <- predict(one.tree, demdata[demdata$success==0,], type = "class")
+library(party)
+```
 
-ATE_tree <- mean(as.numeric(as.vector(yhat_1))) - mean(as.numeric(as.vector(yhat_0)))
-ATE_tree
+First things first, let's upload the Compustat data and perform a naive trimming of the data, excluding all the missing observations.
+
+```{r}
+data <- read_excel("G:\\Il mio Drive\\Econometrics Lab\\Data\\Compustat Data.xlsx")
+data <- data[, !names(data) %in% c("Interest Expense - Total (Financial Services)",
+                            "Net Interest Income", "Nonperforming Assets - Total")]
+data_clean <- na.omit(data)
+```
+
+Before running the analyses, I restict the set of predictors to the following variables and I create a dummy variable that assumes value 1 if the firm is located in the US and 0 if it is located in Canada.
+
+```{r}
+myvariables <- c("ISO Currency Code",
+                 "Assets - Total", "Average Short-Term Borrowings",
+                 "Current Assets - Total", "Long-Term Debt Due in One Year",
+                 "Debt in Current Liabilities - Total", "Employees",
+                 "Earnings Before Interest and Taxes", "Liabilities - Total",
+                 "Net Income (Loss)", "In Process R&D Expense",
+                 "GIC Sectors", "Standard Industry Classification Code")
+data_prediction <- data_clean[myvariables]
+data_prediction$iso_code <- ifelse(data_prediction$`ISO Currency Code`=="USD", 0, 1)
+data_prediction <- data_prediction[, !names(data_prediction) %in% c("ISO Currency Code")]
+```
+
+In order to check how good are the five models, I randomly split the data into two disjoint sets: a training set that I will use to build the model and a test set that I will use to validate the quality of the model's prediction.
+
+```{r}
+set.seed(123)
+index <- sample(seq_len(nrow(data_prediction)),
+                    size = nrow(data_prediction)*0.5) 
+
+train <- data_prediction[index,]
+test <- data_prediction[-index,]
+```
+
+Moreover, I am renaming the variables in the dataset and constructing the "formula" that I will use for all the predictive models that I will run.
+
+```{r}
+colnames(train) <- c("assets", "short_term_borrow",
+                     "current_assets", "debt",
+                     "debt_liabilities", "employees", 
+                     "EBIT", "liabilities",
+                     "net_income", "r_d",
+                     "gic", "SICC", "iso_code")
+colnames(test) <- c("assets", "short_term_borrow",
+                     "current_assets", "debt",
+                     "debt_liabilities", "employees", 
+                     "EBIT", "liabilities",
+                     "net_income", "r_d",
+                     "gic", "SICC", "iso_code")
+predictors <- c("assets", "short_term_borrow",
+                     "current_assets", "debt",
+                     "debt_liabilities", "employees", 
+                     "EBIT", "liabilities",
+                     "net_income", "r_d",
+                     "gic", "SICC")
+formula <- as.formula(paste("as.factor(iso_code) ~",
+                            paste(predictors, collapse="+")))
+formula
+```
+
+## Logistic Regression
+
+The first model that I run is a logistic regression with the inclusion of all the covariates.
+
+```{r}
+logit<-glm(formula, data= train, family=binomial(link='logit'))
+summary(logit)
+```
+
+To get the accuracy of the model I first get the predicted probabilities, then impute the values for the outcome variable.
+
+```{r}
+# Accurancy from cv
+fitted.results.logit <- predict(logit, newdata = test, type='response')
+fitted.logit <- ifelse(fitted.results.logit >= 0.5, 1, 0)
+head(fitted.logit)
+```
+
+Once I get the predicted (or fitted values) for this model, I can evaluate its performance using a number of different performance measures. Below the functions to compute the F-1 Score and the Balanced Accuracy.
+
+```{r}
+## F1- Score
+# predicted: vector of predicted values
+# expected: vector of observed value
+# positive.class: class of binary predictions we are mostly interested in (e.g., "1", "0")
+
+f1_score <- function(predicted, expected, positive.class) {
+  
+  # Generate Confusion Matrix
+  c.matrix = as.matrix(table(expected, predicted))
+  
+  # Compute Precision
+  precision <- diag(c.matrix) / colSums(c.matrix)
+  
+  # Compute Recall
+  recall <- diag(c.matrix) / rowSums(c.matrix)
+  
+  # Compute F-1 Score
+  f1 <-  ifelse(precision + recall == 0, 0, 2*precision*recall/(precision + recall))
+  
+  # Extract F1-score for the pre-defined "positive class"
+  f1 <- f1[positive.class]
+  
+  # Assuming that F1 is zero when it's not possible compute it
+  f1[is.na(f1)] <- 0
+  
+  # Return F1-score
+  return(f1)
+}
+
+## Balanced Accuracy (BACC)
+# predicted: vector of predicted values
+# expected: vector of observed value
+
+balanced_accuracy <- function(predicted, expected) {
+  
+  # Generate Confusion Matrix
+  c.matrix = as.matrix(table(predicted, expected))
+  
+  # First Row Generation
+  first.row <- c.matrix[1,1] / (c.matrix[1,1] + c.matrix[1,2])  
+  
+  # Second Row Generation
+  second.row <- c.matrix[2,2] / (c.matrix[2,1] + c.matrix[2,2])  
+  
+  # # "Balanced" proportion correct (you can use different weighting if needed)
+  acc <- (first.row + second.row)/2 
+  
+  # Return Balanced Accuracy
+  return(acc)
+}
 ```
 
 ```{r}
-# Build Two Trees
-y1.tree <- rpart(as.factor(democracy) ~ year + age + weapon1 + solo +
-                    region +  deadinattempt +  woundedinattempt,
-                  data = demdata[demdata$success==1,])
-yhat_1 <- predict(y1.tree, demdata[demdata$success==1,], type = "class")
+# RMSE
+caret::postResample(fitted.logit, test$iso_code)
+# For good predictive model the MAE and RMSE values should be low 
 
-y0.tree <- rpart(as.factor(democracy) ~ year + age + weapon1 + solo +
-                   region +  deadinattempt +  woundedinattempt,
-                 data = demdata[demdata$success==0,])
-yhat_0 <- predict(y0.tree, demdata[demdata$success==0,], type = "class")
 
-ATE_trees <- mean(as.numeric(as.vector(yhat_1))) - mean(as.numeric(as.vector(yhat_0)))
-ATE_trees
+# Confusion Matrix
+confusionMatrix(data = as.factor(fitted.logit),
+                reference = as.factor(test$iso_code))
+
+# Balanced Accuracy
+balanced_accuracy_logit<-balanced_accuracy(fitted.logit, test$iso_code)
+balanced_accuracy_logit
+
+# F1-Score
+f1_logit_1 <- f1_score(fitted.logit,
+                     test$iso_code,
+                     positive.class="1")
+f1_logit_1
+f1_logit_0 <- f1_score(fitted.logit,
+                     test$iso_code,
+                     positive.class="0")
+f1_logit_0
+
+# ROC Curve and PR- Curve
+fg.logit <- fitted.logit[test$iso_code==1]
+bg.logit <- fitted.logit[test$iso_code==0]
+roc_logit <- roc.curve(scores.class0 = fg.logit,
+                       scores.class1 = bg.logit,
+                       curve = T)
+plot(roc_logit)
+pr_logit <- pr.curve(scores.class0 = fg.logit,
+                     scores.class1 = bg.logit,
+                     curve = T)
+plot(pr_logit) 
 ```
 
-```{r, eval = FALSE}
-# Machine Learning Analysis (Causal Tree)
-library(devtools) 
-install_github("susanathey/causalTree")
-#install.packages("chron")
-library(chron)
-library(causalTree)
-tree03 <- causalTree(democracy ~ year + age + weapon1 + solo +
-                     region +  deadinattempt +  woundedinattempt,
-                     data = demdata, treatment = success,
-                     split.Rule = "CT", cv.option = "CT",
-                     split.Honest = T, cv.Honest = T, split.Bucket = F,  
-                     xval = 5, cp = 0, minsize = 10, propensity = 0.2)
-rpart.plot(tree03, cex=1.05)
-```
+## Classification and Regression Tree
 
-```{r, eval = FALSE}
-opcp03 <- tree03$cptable[,1][which.min(tree03$cptable[,4])]
-opfit03 <- prune(tree03, opcp03)
-```
-
-```{r, eval = FALSE}
-rpart.plot(opfit03, cex=1.05,  box.palette="GnBu",
-           branch.lty=1, shadow.col="gray", nn=TRUE,
-           main="Causal Tree", prefix="ATE\n")
-```
-
-![](files/falcoimg.png)
-
-## Instruments Selection
-
-Here, I am going to show an application based on the package's vignettes, which is based in an article from Barro and Lee (1994). The hypothesis we want to test is if less developed countries, with lower GDP per capita, grow faster than developed countries. In other words, there is a catch up effect. The model equation is as follows:
-
-\begin{equation}
- y_i=\alpha_0d_i+\sum_{i=1}^p\beta_jx_{i,j}+\varepsilon_i
-\end{equation}
-
-where y_i is the GDP growth rate over a specific decade in country $i, d_i$ is the log of the GDP at the beginning of the decade, $x_{i,j}$ are controls that may affect the GDP. We want to know the effects of $d_i$ on y_i, which is measured by $\alpha_0$. If our catch up hypothesis is true, $\alpha_0$ must be positive and hopefully significant.
-
-The dataset is available in the package. It has 62 variables and 90 observations. Each observation is a country, but the same country may have more than one observation if analysed in two different decades. The large number of variables will require some variable selection, and I will show what happens if we use a single LASSO selection and the Double Selection. The hdm package does all the DS steps in a single line of code, we do not need to estimate the two selection models and the Post-OLS individually. I will also run a naive OLS will all variables just for illustration.
-This application can be found [here](https://www.r-bloggers.com/the-package-hdm-for-double-selection-inference-with-a-simple-example/).
+The second model that I run is a classification and regression tree from the "rpart" package in R.
 
 ```{r}
-rm(list=ls())
-library(hdm)
-data("GrowthData") # = use ?GrowthData for more information = #
-dataset <- GrowthData[,-2] # = The second column is just a vector of ones = #
+rpart <- rpart(formula, data=train, method="class") 
+printcp(rpart) # display the results 
+plotcp(rpart) # visualize cross-validation results 
+# summary(rpart) # detailed summary of splits
+```
+
+You can depict the classification tree by using the "plot()" function.
+
+```{r}
+#Plot tree 
+rpart.plot::rpart.plot(rpart)
+```
+
+To get the accuracy of the model I first get the predicted probabilities, then impute the values for the outcome variable.
+
+```{r}
+fitted.results.rpart <- predict(rpart, newdata=test,type='prob')
+fitted.rpart <- ifelse(fitted.results.rpart[,2] >= 0.5, 1, 0)
+```
+
+Below, I depict the predictive performance of the model.
+
+```{r}
+# RMSE
+caret::postResample(fitted.rpart, test$iso_code)
+# For good predictive model the MAE and RMSE values should be low 
+
+
+# Confusion Matrix
+confusionMatrix(data = as.factor(fitted.rpart),
+                reference = as.factor(test$iso_code))
+
+# Balanced Accuracy
+balanced_accuracy_rpart<-balanced_accuracy(fitted.rpart, test$iso_code)
+balanced_accuracy_rpart
+
+# F1-Score
+f1_rpart_1 <- f1_score(fitted.rpart,
+                       test$iso_code,
+                       positive.class="1")
+f1_rpart_1
+f1_rpart_0 <- f1_score(fitted.rpart,
+                       test$iso_code,
+                       positive.class="0")
+f1_rpart_0
+
+# ROC Curve and PR- Curve
+fg.rpart <- fitted.rpart[test$iso_code==1]
+bg.rpart <- fitted.rpart[test$iso_code==0]
+roc_rpart <- roc.curve(scores.class0 = fg.rpart,
+                       scores.class1 = bg.rpart,
+                       curve = T)
+plot(roc_rpart)
+pr_rpart <- pr.curve(scores.class0 = fg.rpart,
+                     scores.class1 = bg.rpart,
+                     curve = T)
+plot(pr_rpart) 
+```
+
+## Conditional Inference Tree
+
+One potential drawback of the classification and regression trees 
+
+```{r}
+c.tree <- ctree(formula, data=train,
+               control = ctree_control(testtype = "MonteCarlo",
+               mincriterion = 0.99, nresample = 1000))
+```
+
+You can plot the tree by running the following chunk of code.
+
+```{r}
+plot(c.tree, gp = gpar(fontsize = 6))
+```
+
+To get the accuracy of the model I first get the predicted probabilities, then impute the values for the outcome variable.
+
+```{r}
+fitted.results.tree <- as.matrix(unlist(predict(c.tree,
+                                 newdata = test, type='prob')))
+fitted.prob.tree <- fitted.results.tree[seq_along(fitted.results.tree) %%2 == 0]
+fitted.tree <- ifelse(fitted.prob.tree >= 0.5, 1, 0)
+```
+
+Below, I depict the predictive performance of the model.
+
+```{r}
+# RMSE
+caret::postResample(fitted.tree, test$iso_code)
+# For good predictive model the MAE and RMSE values should be low 
+
+
+# Confusion Matrix
+confusionMatrix(data = as.factor(fitted.tree),
+                reference = as.factor(test$iso_code))
+
+# Balanced Accuracy
+balanced_accuracy_tree<-balanced_accuracy(fitted.tree, test$iso_code)
+balanced_accuracy_tree
+
+# F1-Score
+f1_tree_1 <- f1_score(fitted.tree,
+                       test$iso_code,
+                       positive.class="1")
+f1_tree_1
+f1_tree_0 <- f1_score(fitted.tree,
+                       test$iso_code,
+                       positive.class="0")
+f1_tree_0
+
+# ROC Curve and PR- Curve
+fg.tree <- fitted.tree[test$iso_code==1]
+bg.tree <- fitted.tree[test$iso_code==0]
+roc_tree <- roc.curve(scores.class0 = fg.tree,
+                       scores.class1 = bg.tree,
+                       curve = T)
+plot(roc_tree)
+pr_tree <- pr.curve(scores.class0 = fg.tree,
+                     scores.class1 = bg.tree,
+                     curve = T)
+plot(pr_tree) 
+```
+
+## Random Forest
+
+The last model that I build is a random forest from the "randomForest" package.
+
+```{r}
+set.seed(133234)
+rf <- randomForest(formula, data=train, importance=TRUE, ntree=200)
 ```
 
 ```{r}
-# = Naive OLS with all variables = #
-# = I will select only the summary line that contains the initial log GDP = #
-OLS <- summary(lm(Outcome ~., data = dataset))$coefficients[1, ]
+print(rf)
+plot(rf)
+varImpPlot(rf)
+```
+
+To get the accuracy of the model I first get the predicted probabilities, then impute the values for the outcome variable.
+
+```{r}
+fitted.rf <- predict(rf, test)
+fitted.rf <- as.numeric(matrix(fitted.rf))
+```
+
+Below, I depict the predictive performance of the model.
+
+```{r}
+# RMSE
+caret::postResample(fitted.rf, test$iso_code)
+# For good predictive model the MAE and RMSE values should be low 
+
+
+# Confusion Matrix
+confusionMatrix(data = as.factor(fitted.rf),
+                reference = as.factor(test$iso_code))
+
+# Balanced Accuracy
+balanced_accuracy_rf<-balanced_accuracy(fitted.rf, test$iso_code)
+balanced_accuracy_rf
+
+# F1-Score
+f1_rf_1 <- f1_score(fitted.rf,
+                       test$iso_code,
+                       positive.class="1")
+f1_rf_1
+f1_rf_0 <- f1_score(fitted.rf,
+                       test$iso_code,
+                       positive.class="0")
+f1_rf_0
+
+# ROC Curve and PR- Curve
+fg.rf <- fitted.rf[test$iso_code==1]
+bg.rf <- fitted.rf[test$iso_code==0]
+roc_rf <- roc.curve(scores.class0 = fg.rf,
+                       scores.class1 = bg.rf,
+                       curve = T)
+plot(roc_rf)
+pr_rf <- pr.curve(scores.class0 = fg.rf,
+                     scores.class1 = bg.rf,
+                     curve = T)
+plot(pr_rf) 
+```
+
+## Bayesian Forest (Bayesian Additive Regression Trees)
+
+```{r}
+set.seed(133234)
+bart_machine <- bartMachine(X = as.data.frame(train[predictors]),
+                          y = as.factor(train$iso_code),
+                          use_missing_data=FALSE)
+```
+
+
+To get the accuracy of the model I first get the predicted probabilities, then impute the values for the outcome variable.
+
+```{r}
+fitted.prob.bart <- 1- round(predict(bart_machine,
+                                        as.data.frame(test[predictors]),
+                                        type='prob'), 6)
+fitted.bart <- ifelse(fitted.prob.bart> 0.5, 1, 0)
 ```
 
 ```{r}
-# = Single step selection LASSO and Post-OLS = #
-# = I will select only the summary line that contains the initial log GDP = #
-lasso <- rlasso(Outcome~., data = dataset, post = FALSE) # = Run the Rigorous LASSO = #
-selected <- which(coef(lasso)[-c(1:2)] !=0) # = Select relevant variables = #
-fm <- paste(c("Outcome ~ gdpsh465", names(selected)), collapse = "+")
-SS <- summary(lm(fm, data = dataset))$coefficients[1, ]
+# RMSE
+caret::postResample(fitted.bart, test$iso_code)
+# For good predictive model the MAE and RMSE values should be low 
+
+
+# Confusion Matrix
+confusionMatrix(data = as.factor(fitted.bart),
+                reference = as.factor(test$iso_code))
+
+# Balanced Accuracy
+balanced_accuracy_bart<-balanced_accuracy(fitted.bart, test$iso_code)
+balanced_accuracy_bart
+
+# F1-Score
+f1_bart_1 <- f1_score(fitted.bart,
+                       test$iso_code,
+                       positive.class="1")
+f1_bart_1
+f1_bart_0 <- f1_score(fitted.bart,
+                       test$iso_code,
+                       positive.class="0")
+f1_bart_0
+
+# ROC Curve and PR- Curve
+fg.bart <- fitted.bart[test$iso_code==1]
+bg.bart <- fitted.bart[test$iso_code==0]
+roc_bart <- roc.curve(scores.class0 = fg.bart,
+                       scores.class1 = bg.bart,
+                       curve = T)
+plot(roc_bart)
+pr_bart <- pr.curve(scores.class0 = fg.bart,
+                     scores.class1 = bg.bart,
+                     curve = T)
+plot(pr_bart) 
 ```
 
-```{r, eval = FALSE}
-# = Double Selection = #
-DS <- rlassoEffects(Outcome~. , I = ~ gdpsh465, data = dataset)
-DS <- summary(DS)$coefficients[1,]
+The package bartMachine provides tools for investigation of variables' importance and variables' selection
+
+```{r}
+investigate_var_importance(bart_machine, num_replicates_for_avg = 20)
 ```
 
 ```{r, eval=FALSE}
-results <- rbind(OLS,SS,DS)
-##        Estimate Std. Error    t value    Pr(>|t|)
-## OLS  0.24716089 0.78450163  0.3150547 0.755056170
-## SS   0.31168793 0.09832465  3.1699876 0.002169693
-## DS  -0.04432403 0.01531925 -2.8933558 0.003811493
+vs <- var_selection_by_permute(bart_machine, 
+                         num_permute_samples = 10)
 ```
 
-The OLS estimate is positive, however the standard error is very big because we have only 90 observations for more than 60 variables. The Single Selection estimate is also positive and, in this case, significant. However, the Double Selection showed a negative and significant coefficient. If the DS is correct, our initial catch up hypothesis is wrong and poor countries grow less than rich countries. We can't say that the DS is correct for sure, but it is backed up by a strong theory and lots of simulations that show that the SS is problematic. It is very, very unlikely that the SS results are more accurate than the DS. It is very surprising how much the results can change from one case to the other. You should at least be skeptic when you see this type of modelling and the selection of controls is not clear.
+As well as for partial dependency plots.
 
-The "hdm" package has several other implementations in this framework such as instrumental variables and logit models and there are also more examples in the package vignette.
+```{r}
+pd_plot(bart_machine, j = "gic")
+pd_plot(bart_machine, j = "current_assets")
+```
+
+We can incorporate information on the best predictors in the model by using a different set of priors.
+
+```{r}
+predictors
+prior <- c(rep(1, times = 10), rep(2, times = 2))
+```
+
+```{r}
+set.seed(133234)
+bart_prior <- bartMachine(X = as.data.frame(train[predictors]),
+                          cov_prior_vec = prior,
+                          y = as.factor(train$iso_code),
+                          use_missing_data=FALSE)
+fitted.prob.bart <- 1- round(predict(bart_prior,
+                             as.data.frame(test[predictors]),
+                             type='prob'), 6)
+fitted.prior <- ifelse(fitted.prob.bart> 0.5, 1, 0)
+```
+
+Evaluate the performance of this new model.
+
+```{r}
+# RMSE
+caret::postResample(fitted.prior, test$iso_code)
+# For good predictive model the MAE and RMSE values should be low 
 
 
+# Confusion Matrix
+confusionMatrix(data = as.factor(fitted.prior),
+                reference = as.factor(test$iso_code))
 
+# Balanced Accuracy
+balanced_accuracy_prior<-balanced_accuracy(fitted.prior, test$iso_code)
+balanced_accuracy_prior
 
+# F1-Score
+f1_prior_1 <- f1_score(fitted.prior,
+                       test$iso_code,
+                       positive.class="1")
+f1_prior_1
+f1_prior_0 <- f1_score(fitted.prior,
+                       test$iso_code,
+                       positive.class="0")
+f1_prior_0
 
-
+# ROC Curve and PR- Curve
+fg.prior <- fitted.prior[test$iso_code==1]
+bg.prior <- fitted.prior[test$iso_code==0]
+roc_prior <- roc.curve(scores.class0 = fg.prior,
+                       scores.class1 = bg.prior,
+                       curve = T)
+plot(roc_prior)
+pr_prior <- pr.curve(scores.class0 = fg.prior,
+                     scores.class1 = bg.prior,
+                     curve = T)
+plot(pr_prior) 
+```
