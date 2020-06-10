@@ -14,22 +14,26 @@ knitr::opts_knit$set(root.dir = 'G:\\Il mio Drive\\Teaching\\Data Science Lab\\L
 # Lecture 3: Data Modeling
 
 The goal of a model is to provide a simple, low-dimensional, interpretable summary of a dataset. Models are a really useful way to help you peel back layers of structure as you are exploring your dataset. Every statistical model can be "divided" in two parts:
-1. a family of models that express a prece, but generic, pattern that you want to capture (i.e., the pattern can be a straight line or a quadratic curve);
-2. a fitted model, that can be found by selecting the family of models that is the closest to your data.
+\begin{enumerate}
+\item a family of models that express a prece, but generic, pattern that you want to capture (i.e., the pattern can be a straight line or a quadratic curve);
+\item a fitted model, that can be found by selecting the family of models that is the closest to your data.
+\end{enumerate}
 
-It is important to understand that a fitted model is just the closest model from a family of models. This implies that you have the "best" model according to some criteria and based on a set of assumptions. This does not imply that your model is a good model or that your model is "true". George Box, a famous british statistician, once said one of the most quoted statistical quotes:<em>"all models are wrong, but some are useful"</em>.
-It is worth reading the fuller context of the quote as it is quite illustrative of the philosophy behind any statistical model:
-<em> "Now it would be very remarkable if any system existing in the real world could be exactly represented by any simple model. However, cunningly chosen parsimonious models often do provide remarkably useful approximations. For example, the law PV = RT relating pressure P, volume V and temperature T of an "ideal" gas via a constant R is not exactly true for any real gas, but it frequently provides a useful approximation and furthermore its structure is informative since it springs from a physical view of the behavior of gas molecules. For such a model there is no need to ask the question "Is the model true?" If "truth" is to be the "whole truth" the answer must be "No." The only question of interest is "Is the model illuminating and use-
-ful?"</em>
+It is important to understand that a fitted model is just the closest model from a family of models. This implies that you have the "best" model according to some criteria and based on a set of assumptions. This does not imply that your model is a good model or that your model is "true". George Box, a famous british statistician, once said one of the most quoted statistical quotes: \textit{"all models are wrong, but some are useful"}.
+
+It is worth reading the fuller context of the quote as it is quite illustrative of the philosophy behind any statistical model: \\
+\textit{"Now it would be very remarkable if any system existing in the real world could be exactly represented by any simple model. However, cunningly chosen parsimonious models often do provide remarkably useful approximations. For example, the law PV = RT relating pressure P, volume V and temperature T of an "ideal" gas via a constant R is not exactly true for any real gas, but it frequently provides a useful approximation and furthermore its structure is informative since it springs from a physical view of the behavior of gas molecules. For such a model there is no need to ask the question "Is the model true?" If "truth" is to be the "whole truth" the answer must be "No." The only question of interest is "Is the model illuminating and use-
+ful?"}
 
 This does not mean that all the models are wrong and, we should just go for the least wrong model. This quote should be interpeted as a call for careful laying down the assumptions on which the quality of the model is built on. As Berkeley statisticain Mark Van Der Laan stated in a recent article "The statistical formulation and theory should define the algorithm" [source](https://magazine.amstat.org/blog/2015/02/01/statscience_feb2015/).
 
 
 In this lecture we will go see how to perform in R two types of models:
-1. linear regression models;
-2. non-linear predictive models (decision trees, random forests).
+\begin{enumerate}
+\item linear regression models;
+\item regularization and selection models.
+\end{enumerate}
 
-As you have probably seen the former in your econometric classes, I will skip the mathematical details, and focus on the the function used to build these models and on the intepretation of their outputs.
 
 ```{r, warning=FALSE}
 library(tidyverse)
@@ -40,6 +44,8 @@ library(AER)
 library(sandwich)
 library(lmtest)
 library(broom)
+library(lars)
+library(glmnet)
 ```
 
 ```{r}
@@ -370,55 +376,49 @@ The "hdm" package has several other implementations in this framework such as in
 ## Stability Selection
 
 ```{r, warning=FALSE}
-  ####################################################################
-  ### using stability selection with Lasso methods:
-
-  if (require("lars")) {
-      (stab.lasso <- stabsel(x = X, y = y,
+####################################################################
+### using stability selection with Lasso methods:
+stab.lasso <- stabsel(x = X, y = y,
                              fitfun = lars.lasso, cutoff = 0.75,
-                             PFER = 1))
-      (stab.stepwise <- stabsel(x = X, y = y,
-                                fitfun = lars.stepwise, cutoff = 0.75,
-                                PFER = 1))
-      plot(stab.lasso, main = "Lasso")
-      plot(stab.stepwise, main = "Stepwise Selection")
-      ## --> stepwise selection seems to be quite unstable even in this low
-      ##     dimensional example!
-  }
+                             PFER = 1)
 
-  ## set seed (again to make results comparable)
-  set.seed(1234)
-  if (require("glmnet")) {
-      (stab.glmnet <- stabsel(x = X, y = y,
+stab.stepwise <- stabsel(x = X, y = y,
+                                fitfun = lars.stepwise, cutoff = 0.75,
+                                PFER = 1)
+plot(stab.lasso, main = "Lasso")
+plot(stab.stepwise, main = "Stepwise Selection")
+## --> stepwise selection seems to be quite unstable even in this low
+##     dimensional example!
+```
+
+```{r}
+## set seed (again to make results comparable)
+set.seed(1234)
+stab.glmnet <- stabsel(x = X, y = y,
                               fitfun = glmnet.lasso, cutoff = 0.75,
-                              PFER = 1))
-      plot(stab.glmnet, main = "Lasso (glmnet)")
-      if (exists("stab.lasso"))
-          plot(stab.lasso, main = "Lasso (lars)")    
-  }
-  
-  
-  ## Select variables with maximum coefficients based on lasso estimate
-  
-  set.seed(1234) # reset seed
-  if (require("glmnet")) {
-      ## use cross-validated lambda 
-      lambda.min <- cv.glmnet(x = as.matrix(X), y = y)$lambda.min
-      (stab.maxCoef <- stabsel(x = X, y = y,
+                              PFER = 1)
+plot(stab.glmnet, main = "Lasso (glmnet)")
+```
+
+```{r}
+## Select variables with maximum coefficients based on lasso estimate
+set.seed(1234) 
+ 
+## use cross-validated lambda 
+lambda.min <- cv.glmnet(x = as.matrix(X), y = y)$lambda.min
+stab.maxCoef <- stabsel(x = X, y = y,
                                fitfun = glmnet.lasso_maxCoef, 
                                # specify additional parameters to fitfun
                                args.fitfun = list(lambda = lambda.min),
-                               cutoff = 0.75, PFER = 1))
+                               cutoff = 0.75, PFER = 1)
                                
-      ## WARNING: Using a fixed penalty (lambda) is usually not permitted and 
-      ##          not sensible. See ?fitfun for details.
+## WARNING: Using a fixed penalty (lambda) is usually not permitted and 
+##          not sensible. See ?fitfun for details.
       
-      ## now compare standard lasso with "maximal parameter estimates" from lasso
-      plot(stab.maxCoef, main = "Lasso (glmnet; Maximum Coefficients)")
-      plot(stab.glmnet, main = "Lasso (glmnet)")
-      ## --> very different results.
-  }
-
+## now compare standard lasso with "maximal parameter estimates" from lasso
+plot(stab.maxCoef, main = "Lasso (glmnet; Maximum Coefficients)")
+plot(stab.glmnet, main = "Lasso (glmnet)")
+## --> very different results.
 ```
 
 ## Instruments Selection
