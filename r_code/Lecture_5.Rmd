@@ -1,0 +1,332 @@
+---
+title: "Lecture 5: Causal Machine Learning"
+author: "Falco J. Bargagli Stoffi"
+date: "12/06/2020"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'G:\\Il mio Drive\\Teaching\\Data Science Lab\\Lecture 4')
+```
+
+# Causal Machine Learning
+
+In this lecture, we will see two applications of causal machine learning in economics. For the mathematical details of the methods depicted in the following please refer to the lecture's slides. The methods that we will see here are the following:
+\begin{enumerate}
+\item machine learning for the discovery of heterogeneous causal effects (Athey and Imbens, 2015; 2016);
+\item machine learning for the estimation of heterogeneous causal effects (Wager and Athey, 2018).
+\end{enumerate}
+
+## Heterogeneous Causal Effects
+
+In the first application, we will partially reproduce the results from a paper of mine co-authored with Giorgio Gnecco and published on the "International Journal of Data Science and Analytics" [source](https://www.researchgate.net/publication/333292686_Causal_tree_with_instrumental_variable_an_extension_of_the_causal_tree_framework_to_irregular_assignment_mechanisms).
+
+During the years 2003-2005, the Tuscan Regional Administration (Italy), supported by the "Artigian Credito Toscano", introduced the "Programs for the Development of Crafts" (PDC). These programs were aimed at Tuscan small-sized handicraft firms, with the goal of promoting innovation and regional development. The firms could access PDC by a voluntary application and eligibility criteria. The objective of PDC was to ease access to credit for small-sized firms to boost investments, sales and employment levels. The PCD call was out in 2003, and guaranteed soft-loans to the firms that were considered eligible for the grant. 
+
+The eligibility was evaluated on the basis of an investment project. The minimal admissible investment cost was 12,500 Euros, and the grant covered 70% of the financed investment. Among firms participating in the PDC between 2003 and 2005, the large majority of the projects were funded, and the percentage of insolvencies was low (lower than 3%).
+
+We have data available on assisted firms that participated in the program between 2003 and 2005, firms that applied for the founding but were not eligible, and firms that did not apply for the PDC. For our analysis, we use an integrated dataset including information collected by the "Artigian Cred-
+ito Toscano" and information coming from the archives of the Chamber of Commerce (2001 ??? 2004). The data are available for 266 assisted firms (participating in 2003/05 PDC) and 721 non-assisted firms. The firms in the dataset are operating in 4 economic sectors that comprise the majority of the Tuscan
+artisan firms:
+\begin{enumerate}
+\item 1) construction;
+\item manufacturing activities;
+\item wholesale and retail trade;
+\item real estate business, rental services, computer, research,
+business services.
+\end{enumerate}
+
+The main covariates used for the analysis are recorded in the years before the treatment and at the end of the treatment. The covariates are composed by time-varying covariates, such as sales and employees, and time-invarying covariates, such as location of the firm, year of start-up, legal status, and main distribution channel. The location of each firm is recorded at Provincial level. We have records of firms that are located in the provinces of Arezzo, Florence, Grosseto, Siena, Prato, Pistoia, Lucca, Massa, and Pisa. A central variable for our analysis is the amount of firm's sales in 2002 (pre-treatment
+year). We created 6 different sales' groups (up to 50,000; 50,000 to 100,000; 100,000 to 250,000; 250,000 to 500,000; 500,000 to 1,000,000; greater than 1,000,000). Moreover, in our dataset, we have the record of the legal status (individual, partnership or capital-company), the year of start-up, the main target market (local market vs international market), the main distribution channel (private distribution channel vs other distribution channel) and whether or not the firm got any European fundings from the Objective 2 policy.
+
+The dependent variable is a dummy variable that records if the firm hired new employees in the years immediately subsequent to the treatment. The dummy variable is created by comparing the pre-treatment number of employees and the post-treatment number of employees, and takes the value 1 if there were new hirings, and the value 0 in absence of new hirings (or if the firm fired employees in the period of the research). The covariate that catches the assignment to the treatment is a dummy variable, which is recorded as 1 if the firm received the financial aid during the two years 2003/2005, and 0 otherwise.
+
+```{r warning=FALSE}
+rm(list=ls())
+setwd("G:\\Il mio Drive\\Ph.D\\Ph.D\\Applied Econometrics\\Project\\Dati")
+library('foreign')
+source('functions.R')
+data <- read.dta("obs.data.dta")
+```
+
+Let's see how are the data. You can find a "Data Codebook" in the lecture's folder that can help you navigate through the data.
+
+```{r}
+library(Hmisc)
+summary(data)
+```
+
+
+## Sample Balance
+
+We can explore the sample balance by using the "MatchIt" package. "MatchIt" provides a series of functions to perform matching. In a nutshell, matching is a statistical technique which is used to evaluate the effect of a treatment by comparing the treated and the non-treated units in an observational study or quasi-experiment (i.e. when the treatment is not randomly assigned). The goal of matching is, for every treated unit, to find one (or more) non-treated unit(s) with similar observable characteristics against whom the effect of the treatment can be assessed. By matching treated units to similar non-treated units, matching enables a comparison of outcomes among treated and non-treated units to estimate the effect of the treatment reducing bias due to confounding.
+
+Here, we will compare the balance in the covariates in the group of treated and control variables (which is a proxy for unconfoundedness to hold). We will perform this analysis on the matched sample and the non-matched sample. 
+
+```{r}
+formula <- as.formula(TREAT ~ addetti_pre + formag + ob2_yes+
+                        locale + privato + prov + anno +
+                        femminile + giovanile + 
+                        sez + fatturato_pre)
+
+#install.packages("MatchIt")
+library(MatchIt)
+m.nn <- matchit(formula, data = data, method = "nearest", m.order="largest")	
+```
+
+```{r}
+plot(m.nn, type='hist', col="red")
+```
+
+Here, we get the standardized differences in means between the matched and non-matched units.
+
+```{r}
+st.diff.mean.before <- summary(m.nn,standardize=TRUE)$sum.all[,4]
+st.diff.mean.after <- summary(m.nn,standardize=TRUE)$sum.matched[,4]
+st.diff.mean.before
+st.diff.mean.after
+tabellareplace <- cbind(st.diff.mean.before, st.diff.mean.after)
+rownames(tabellareplace) <- c("propensity_score", "addetti_pre", "formag",
+                              "ob2_yes", "locale", "privato", "prov", "anno",
+                              "femminile", "giovanile", "sez", "fatturato_pre")
+#xtable(tabellareplace)
+```
+
+We can use a loveplot to check the differences in these samples. It is always useful to depict a loveplot when you are performing a policy evaluation.
+
+```{r}
+par(mfrow=c(1,1))
+par(mar=c(2,5,2,5), xpd=FALSE)
+plot(st.diff.mean.before, 1:length(st.diff.mean.after), col="black",
+     xlab=NA, ylab=NA, yaxt="n",
+     xlim=c(min(c(st.diff.mean.before,st.diff.mean.after)),
+            max(c(st.diff.mean.before,st.diff.mean.after))
+     ),
+     pch=23,
+     main="Standardized difference in means for covariates")
+points(st.diff.mean.after, 1:length(st.diff.mean.after), col="red", pch=19)
+axis(2, labels=rownames(tabellareplace), at=1:nrow(tabellareplace), las=1)
+abline(h=1:length(st.diff.mean.after), lty="dotted")
+abline(v=0, lwd=2)
+par(xpd=TRUE)
+legend("right",
+       inset = c(-0.2,0),
+       legend = c("Initial", "Matched"),
+       pch = c(23, 19),
+       col = c("black", "red"),
+       cex = 1)
+```
+
+Once we checked the balance in the two samples of treated and control units we can estimate the Average Treatment Effect (ATE), together with its 95\% confidence interval.
+
+```{r}
+t.test(data$outcome[data$TREAT==1], data$outcome[data$TREAT==0])
+ATE <- mean(data$outcome[data$TREAT==1]) - mean(data$outcome[data$TREAT==0])
+var.ate <- var(data$outcome[data$TREAT==1])/length(which(data$TREAT==1)) +
+           var(data$outcome[data$TREAT==0])/length(which(data$TREAT==0))
+ub <- ATE +1.96*sqrt(var.ate)
+lb <- ATE -1.96*sqrt(var.ate)
+```
+
+```{r}
+ATE
+ub
+lb
+```
+
+We perform the same analysis on matched units.
+
+```{r}
+# Same Analysis on Matched Units
+m.mydata <- match.data(m.nn)
+head(m.mydata)
+
+t.test(m.mydata$outcome[m.mydata$TREAT==1], m.mydata$outcome[m.mydata$TREAT==0])
+ATE <- mean(m.mydata$outcome[m.mydata$TREAT==1]) - mean(m.mydata$outcome[m.mydata$TREAT==0])
+var.ate <- var(m.mydata$outcome[m.mydata$TREAT==1])/length(which(m.mydata$TREAT==1)) +
+           var(m.mydata$outcome[m.mydata$TREAT==0])/length(which(m.mydata$TREAT==0))
+ub <- ATE +1.96*sqrt(var.ate)
+lb <- ATE -1.96*sqrt(var.ate)
+```
+
+```{r}
+ATE
+ub
+lb
+```
+
+## Causal Trees
+
+After discussing the results on the overall average treatment effect, it is time to dig deeper into the conditional effects.
+
+Here, I will reproduce the methodologies proposed by Athey and Imbens (2015). (i) I will start from a single tree for treated and control units, (ii) I will show the results for two trees (1 tree for treated units and 1 tree for controls), and finally (iii) I will depict the results from the Causal Tree.
+
+### Build One Tree
+
+```{r}
+library(rpart)
+formula <- as.formula(as.factor(outcome) ~ addetti_pre + formag + ob2_yes+
+                        locale + privato + prov + anno +
+                        femminile + giovanile + 
+                        sez + fatturato_pre + TREAT)
+one.tree <- rpart(formula, data = data)
+yhat_1 <- predict(one.tree, data[data$TREAT==1,], type = "class")
+yhat_0 <- predict(one.tree, data[data$TREAT==0,], type = "class")
+
+ATE_tree <- mean(as.numeric(as.vector(yhat_1))) - mean(as.numeric(as.vector(yhat_0)))
+ATE_tree
+```
+
+### Build Two Trees
+
+```{r}
+formula <- as.formula(as.factor(outcome) ~ addetti_pre + formag + ob2_yes+
+                        locale + privato + prov + anno +
+                        femminile + giovanile + 
+                        sez + fatturato_pre)
+y1.tree <- rpart(formula, data = data[data$TREAT==1,])
+yhat_1 <- predict(y1.tree, data[data$TREAT==1,], type = "class")
+
+y0.tree <- rpart(formula, data = data[data$TREAT==0,])
+yhat_0 <- predict(y0.tree, data[data$TREAT==0,], type = "class")
+
+ATE_trees <- mean(as.numeric(as.vector(yhat_1))) - mean(as.numeric(as.vector(yhat_0)))
+ATE_trees
+```
+
+### Machine Learning Analysis (Causal Tree)
+
+```{r, eval = FALSE}
+library(devtools) 
+install_github("susanathey/causalTree")
+#install.packages("chron")
+library(chron)
+library(causalTree)
+tree03 <- causalTree(formula,
+                     data = data, treatment = TREAT,
+                     split.Rule = "CT", cv.option = "CT",
+                     split.Honest = T, cv.Honest = T, split.Bucket = F,  
+                     xval = 5, cp = 0, minsize = 10, propensity = 0.2)
+rpart.plot(tree03, cex=1.05)
+```
+
+```{r, eval = FALSE}
+opcp03 <- tree03$cptable[,1][which.min(tree03$cptable[,4])]
+opfit03 <- prune(tree03, opcp03)
+```
+
+```{r, eval = FALSE}
+rpart.plot(opfit03, cex=1.05,  box.palette="GnBu",
+           branch.lty=1, shadow.col="gray", nn=TRUE,
+           main="Causal Tree", prefix="ATE\n")
+```
+
+
+## Causal Forest
+
+```{r}
+library(grf)
+variables <- c("addetti_pre", "formag",
+                "ob2_yes", "locale", "privato", "prov", "anno",
+                "femminile", "giovanile", "sez", "fatturato_pre")
+X <- as.data.frame(data[variables])
+c.forest <- causal_forest(X, data$outcome, data$TREAT)
+
+# Predict using the forest.
+c.pred <- predict(c.forest, X)
+ATE <- mean(c.pred$predictions)
+ATE
+```
+
+```{r}
+# Predict with confidence intervals; growing more trees is now recommended.
+c.forest <- causal_forest(X, data$outcome, data$TREAT, num.trees = 4000)
+c.pred <- predict(c.forest, X, estimate.variance = TRUE)
+```
+
+```{r}
+plot_htes <- function(cf_preds, ci = FALSE, z = 1.96) {
+  if (is.null(cf_preds$predictions) || nrow(matrix(cf_preds$predictions)) == 0)
+    stop("cf_preds must include a matrix called 'predictions'")
+  
+  out <- ggplot(
+    mapping = aes(
+      x = rank(cf_preds$predictions), 
+      y = cf_preds$predictions
+    )
+  ) +
+    geom_point() +
+    labs(x = "Rank", y = "Estimated Treatment Effect") +
+    theme_light()
+  
+  if (ci && nrow(matrix(cf_preds$variance.estimates)) > 0) {
+    out <- out +
+      geom_errorbar(
+        mapping = aes(
+          ymin = cf_preds$predictions + z * sqrt(cf_preds$variance.estimates),
+          ymax = cf_preds$predictions - z * sqrt(cf_preds$variance.estimates), alpha = 0.15
+        )
+      )
+  }
+    
+  return(out)
+}
+```
+
+```{r}
+plot_htes(c.pred, ci = TRUE)
+```
+
+## Bayesian Causal Forest
+
+```{r}
+library(bcf)
+formula_ps <- as.formula(as.factor(TREAT) ~ addetti_pre + formag + ob2_yes+
+                        locale + privato + prov + anno +
+                        femminile + giovanile + 
+                        sez + fatturato_pre)
+logit<-glm(formula_ps, data= data, family=binomial(link='logit'))
+pihat <- predict(logit, newdata = X, type='response')
+bcf_fit <- bcf(data$outcome, data$TREAT, as.matrix(X), as.matrix(X), pihat, nburn=2000, nsim=2000)
+```
+
+```{r}
+library(matrixStats)
+# Get posterior of treatment effects
+tau_post <- bcf_fit$tau
+predictions <- colMeans(tau_post)
+ATE <- mean(predictions)
+ATE
+```
+
+```{r}
+variance.estimates <- colVars(tau_post)
+bcf.pred <- as.data.frame(cbind(predictions, variance.estimates))
+```
+
+```{r}
+plot_htes(c.pred, ci = TRUE)
+```
+
+
+## Causal Rules
+
+
+```{r}
+formula <- as.formula(predictions ~ addetti_pre + formag + ob2_yes+
+                        locale + privato + prov + anno +
+                        femminile + giovanile + 
+                        sez + fatturato_pre)
+rules.tree <- rpart(formula, data = data)
+rpart.plot::rpart.plot(rules.tree)
+```
+
+
+The interpretation is that  public enterprises with young owners, receiving money with juridical form equal to one and with sales lower than 250,000 have the higher increase in the chance of hiring new employees after they receive the funding (almost 30% higher chance). Hence, policy-makers could target these enterprises to boost the overall effects of their policy.
+
+
+
+
+
