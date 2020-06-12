@@ -247,7 +247,7 @@ c.pred <- predict(c.forest, X, estimate.variance = TRUE)
 ```
 
 ```{r}
-plot_htes <- function(cf_preds, ci = FALSE, z = 1.96) {
+plot_het_eff <- function(cf_preds, ci = FALSE, z = 1.96) {
   if (is.null(cf_preds$predictions) || nrow(matrix(cf_preds$predictions)) == 0)
     stop("cf_preds must include a matrix called 'predictions'")
   
@@ -276,7 +276,9 @@ plot_htes <- function(cf_preds, ci = FALSE, z = 1.96) {
 ```
 
 ```{r}
-plot_htes(c.pred, ci = TRUE)
+plot <- plot_het_eff(c.pred, ci = TRUE)
+plot  + geom_hline(yintercept=0, linetype="dashed", 
+                color = "red", size=1)
 ```
 
 ## Bayesian Causal Forest
@@ -307,7 +309,9 @@ bcf.pred <- as.data.frame(cbind(predictions, variance.estimates))
 ```
 
 ```{r}
-plot_htes(c.pred, ci = TRUE)
+plot <- plot_het_eff(c.pred, ci = TRUE)
+plot  + geom_hline(yintercept=0, linetype="dashed", 
+                color = "red", size=1)
 ```
 
 
