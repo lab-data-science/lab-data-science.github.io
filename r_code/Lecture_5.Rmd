@@ -27,11 +27,10 @@ During the years 2003-2005, the Tuscan Regional Administration (Italy), supporte
 
 The eligibility was evaluated on the basis of an investment project. The minimal admissible investment cost was 12,500 Euros, and the grant covered 70% of the financed investment. Among firms participating in the PDC between 2003 and 2005, the large majority of the projects were funded, and the percentage of insolvencies was low (lower than 3%).
 
-We have data available on assisted firms that participated in the program between 2003 and 2005, firms that applied for the founding but were not eligible, and firms that did not apply for the PDC. For our analysis, we use an integrated dataset including information collected by the "Artigian Cred-
-ito Toscano" and information coming from the archives of the Chamber of Commerce (2001 ??? 2004). The data are available for 266 assisted firms (participating in 2003/05 PDC) and 721 non-assisted firms. The firms in the dataset are operating in 4 economic sectors that comprise the majority of the Tuscan
+We have data available on assisted firms that participated in the program between 2003 and 2005, firms that applied for the founding but were not eligible, and firms that did not apply for the PDC. For our analysis, we use an integrated dataset including information collected by the "Artigian Credito Toscano" and information coming from the archives of the Chamber of Commerce. The data are available for 266 assisted firms (participating in 2003/05 PDC) and 721 non-assisted firms. The firms in the dataset are operating in 4 economic sectors that comprise the majority of the Tuscan
 artisan firms:
 \begin{enumerate}
-\item 1) construction;
+\item construction;
 \item manufacturing activities;
 \item wholesale and retail trade;
 \item real estate business, rental services, computer, research,
