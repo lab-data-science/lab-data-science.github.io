@@ -46,7 +46,6 @@ The dependent variable is a dummy variable that records if the firm hired new em
 rm(list=ls())
 setwd("G:\\Il mio Drive\\Ph.D\\Ph.D\\Applied Econometrics\\Project\\Dati")
 library('foreign')
-source('functions.R')
 data <- read.dta("obs.data.dta")
 ```
 
@@ -204,7 +203,7 @@ install_github("susanathey/causalTree")
 library(chron)
 library(causalTree)
 tree03 <- causalTree(formula,
-                     data = data, treatment = TREAT,
+                     data = data, treatment = data$TREAT,
                      split.Rule = "CT", cv.option = "CT",
                      split.Honest = T, cv.Honest = T, split.Bucket = F,  
                      xval = 5, cp = 0, minsize = 10, propensity = 0.2)
